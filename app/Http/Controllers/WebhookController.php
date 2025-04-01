@@ -9,24 +9,32 @@ use Illuminate\Support\Facades\Log;
 
 class WebhookController extends Controller
 {
-    public function handleCallback(Request $request, ParticipantService $participantService)
+    protected $participantService;
+
+    public function __construct(ParticipantService $participantService)
+    {
+        $this->participantService = $participantService;
+    }
+
+    public function handleCallback(Request $request)
     {
         $data = $request->all();
-        $phoneNumber = $data['phone'];
-        $messageBody = $data['text']['message'] ?? $data['buttonsResponseMessage']['message'] ?? null;
-        $isButtonResponse = isset($data['buttonsResponseMessage']);
+        Log::info('Webhook recebido', $data);
 
-        // Verifica se o número está cadastrado como participante
+        $phoneNumber = $data['phone'];
         $participant = Participant::where('phone', $phoneNumber)->first();
 
         if (!$participant) {
-            // Envia mensagem informando que o número não está cadastrado
-            $participantService->sendNotRegisteredMessage($phoneNumber);
-            return response()->json(['message' => 'Número não cadastrado'], 403);
+            Log::warning('Participante não encontrado ou inativo.', ['phone' => $phoneNumber]);
+            $this->participantService->sendNotRegisteredMessage($phoneNumber);
+            return response()->json(['status' => 'error', 'message' => 'Participante não encontrado ou inativo.']);
         }
 
-        return response()->json(
-            $participantService->handleParticipantMessage($participant, $phoneNumber, $messageBody, $isButtonResponse, $data)
+        return $this->participantService->handleParticipantMessage(
+            $participant,
+            $phoneNumber,
+            $data['text']['message'] ?? null,
+            $data['buttonsResponseMessage']['buttonId'] ?? null
         );
     }
 }

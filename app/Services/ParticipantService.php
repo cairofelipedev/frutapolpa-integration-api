@@ -15,47 +15,86 @@ class ParticipantService
         $this->whatsAppService = $whatsAppService;
     }
 
-    public function handleParticipantMessage($participant, $phoneNumber, $messageBody, $isButtonResponse, $data)
+    public function handleParticipantMessage(Participant $participant, $phoneNumber, $textMessage, $buttonId)
     {
-        if ($isButtonResponse) {
-            if ($messageBody === 'Cadastrar Cupom') {
-                dispatch(new SendWhatsAppMessage($phoneNumber, 'Digite o código do seu cupom:'));
-                $participant->update(['conversation_step' => 'AWAITING_COUPON']);
-            } elseif ($messageBody === 'Verificar Saldo') {
-                dispatch(new SendWhatsAppMessage($phoneNumber, 'Seu saldo é de X pontos.'));
-                $participant->update(['conversation_step' => 'INITIAL']);
-            }
-        } else {
-            switch ($participant->conversation_step) {
-                case 'AWAITING_COUPON':
-                    dispatch(new SendWhatsAppMessage($phoneNumber, 'Seu cupom foi cadastrado com sucesso!'));
-                    $participant->update(['conversation_step' => 'INITIAL']);
-                    break;
-                default:
-                    $this->sendButtonListMessage($phoneNumber);
-            }
+        if ($buttonId) {
+            return $this->handleButtonMessage($participant, $phoneNumber, $buttonId);
         }
 
-        return ['message' => 'Webhook processado'];
+        if ($textMessage) {
+            return $this->handleTextMessage($participant, $phoneNumber, $textMessage);
+        }
+
+        return response()->json(['status' => 'ignored']);
+    }
+
+    protected function handleButtonMessage(Participant $participant, $phoneNumber, $buttonId)
+    {
+        if ($buttonId === 'cadastrar_cupom') {
+            $participant->step = 1;
+            $participant->save();
+            return $this->sendTextMessage($phoneNumber, 'Quantos cupons você deseja cadastrar?');
+        }
+
+        return $this->sendInitialOptions($phoneNumber);
+    }
+
+    protected function handleTextMessage(Participant $participant, $phoneNumber, $textMessage)
+    {
+        switch ($participant->step) {
+            case 1:
+                return $this->processCouponQuantity($participant, $phoneNumber, $textMessage);
+            default:
+                return $this->sendInitialOptions($phoneNumber);
+        }
+    }
+
+    protected function processCouponQuantity(Participant $participant, $phoneNumber, $quantity)
+    {
+        $quantity = intval($quantity);
+        $couponCount = 0;
+
+        if ($quantity >= 3 && $quantity < 5) {
+            $couponCount = 1;
+        } elseif ($quantity >= 5 && $quantity < 10) {
+            $couponCount = 2;
+        } elseif ($quantity >= 10) {
+            $couponCount = 3;
+        }
+
+        $generatedCoupons = [];
+        for ($i = 0; $i < $couponCount; $i++) {
+            $generatedCoupons[] = rand(100000, 999999);
+        }
+
+        $message = "Maravilha! Estes são seus cupons da sorte:\n" . implode("\n", $generatedCoupons);
+        $this->sendTextMessage($phoneNumber, $message);
+
+        $participant->step = 0;
+        $participant->save();
+
+        return response()->json(['status' => 'coupons generated']);
+    }
+
+    protected function sendTextMessage($phoneNumber, $messageBody)
+    {
+        dispatch(new SendWhatsAppMessage($phoneNumber, $messageBody));
+    }
+
+    protected function sendInitialOptions($phoneNumber)
+    {
+        $buttons = [
+            ['id' => 'cadastrar_cupom', 'label' => 'Cadastrar Cupom'],
+        ];
+
+        return $this->whatsAppService->sendButtonListMessage($phoneNumber, "O que você deseja fazer?", $buttons);
     }
 
     public function sendNotRegisteredMessage($phoneNumber)
     {
-        dispatch(new SendWhatsAppMessage($phoneNumber, 'Seu número não está cadastrado como participante.'));
+        $message = "Olá, seu número não se encontra cadastrado. Para participar, acesse agora *frutapolpa.com.br/participe*, preencha seu cadastro e comece a participar!";
+        dispatch(new SendWhatsAppMessage($phoneNumber, $message));
+
         Log::info("Mensagem enviada para número não cadastrado: {$phoneNumber}");
-    }
-
-    public function sendButtonListMessage($phoneNumber)
-    {
-        $buttons = [
-            ['id' => 'option1', 'label' => 'Cadastrar Cupom'],
-            ['id' => 'option2', 'label' => 'Verificar Saldo'],
-        ];
-
-        $messageBody = "O que você gostaria de fazer?";
-
-        $this->whatsAppService->sendButtonListMessage($phoneNumber, $messageBody, $buttons);
-
-        Log::info("Mensagem com opções enviada para: {$phoneNumber}");
     }
 }

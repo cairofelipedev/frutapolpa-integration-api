@@ -10,7 +10,7 @@ class Participant extends Model
     use HasFactory;
 
     protected $table = 'participants';
-    
+
     protected $fillable = [
         'cpf',
         'first_name',
@@ -24,6 +24,7 @@ class Participant extends Model
         'neighborhood',
         'address',
         'number',
-        'complement'
+        'complement',
+        'conversation_step'
     ];
 }
