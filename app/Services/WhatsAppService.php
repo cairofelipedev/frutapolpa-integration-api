@@ -60,4 +60,20 @@ class WhatsAppService
 
         return $response->json();
     }
+
+    public function sendImageMessage($phone, $imageUrl, $caption = '', $viewOnce = false)
+    {
+        $url = $this->buildUrl('send-image');
+
+        $body = [
+            'phone' => $phone,
+            'image' => $imageUrl,
+            'caption' => $caption,
+            'viewOnce' => $viewOnce,
+        ];
+
+        $response = Http::withHeaders($this->getHeaders())->post($url, $body);
+
+        return $response->json();
+    }
 }

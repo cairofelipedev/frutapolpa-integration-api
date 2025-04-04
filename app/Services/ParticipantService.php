@@ -15,11 +15,15 @@ class ParticipantService
         $this->whatsAppService = $whatsAppService;
     }
 
-    public function handleParticipantMessage(Participant $participant, $phoneNumber, $textMessage, $buttonId)
+    public function handleParticipantMessage(Participant $participant, $phoneNumber, $textMessage, $buttonId, $mediaUrl = null)
     {
         if ($buttonId) {
             return $this->handleButtonMessage($participant, $phoneNumber, $buttonId);
         }
+
+        // if ($mediaUrl && $participant->step === 3) {
+        //     return $this->handleImageSubmission($participant, $phoneNumber, $mediaUrl);
+        // }
 
         if ($textMessage) {
             return $this->handleTextMessage($participant, $phoneNumber, $textMessage);
@@ -33,7 +37,21 @@ class ParticipantService
         if ($buttonId === 'cadastrar_cupom') {
             $participant->step = 1;
             $participant->save();
-            return $this->sendTextMessage($phoneNumber, 'Quantos cupons você deseja cadastrar?');
+            return $this->sendPolpaOptions($phoneNumber);
+        }
+
+        if (in_array($buttonId, ['1', '3', '5', '10', '15', '20', 'outro_valor'])) {
+            $participant->step = 3; // aguardando imagem
+            $participant->save();
+
+            // Envia imagem de exemplo
+            $this->whatsAppService->sendImageMessage(
+                $phoneNumber,
+                "https://www.z-api.io/wp-content/themes/z-api/dist/images/logo.svg",
+                "Obrigad@! Agora envie uma foto nítida do seu cupom fiscal 📸"
+            );
+
+            return $this->sendTextMessage($phoneNumber, "Estamos quase lá! Envie agora a foto do seu cupom fiscal para validar sua participação.");
         }
 
         return $this->sendInitialOptions($phoneNumber);
@@ -42,7 +60,7 @@ class ParticipantService
     protected function handleTextMessage(Participant $participant, $phoneNumber, $textMessage)
     {
         switch ($participant->step) {
-            case 1:
+            case 2:
                 return $this->processCouponQuantity($participant, $phoneNumber, $textMessage);
             default:
                 return $this->sendInitialOptions($phoneNumber);
@@ -96,5 +114,24 @@ class ParticipantService
         dispatch(new SendWhatsAppMessage($phoneNumber, $message));
 
         Log::info("Mensagem enviada para número não cadastrado: {$phoneNumber}");
+    }
+
+    protected function sendPolpaOptions($phoneNumber)
+    {
+        $buttons = [
+            ['id' => '1', 'label' => '1'],
+            ['id' => '3', 'label' => '3'],
+            ['id' => '5', 'label' => '5'],
+            ['id' => '10', 'label' => '10'],
+            ['id' => '15', 'label' => '15'],
+            ['id' => '20', 'label' => '20'],
+            ['id' => 'outro_valor', 'label' => 'Outro valor'],
+        ];
+
+        return $this->whatsAppService->sendButtonListMessage(
+            $phoneNumber,
+            "Quantas polpas você cadastrou?",
+            $buttons
+        );
     }
 }
