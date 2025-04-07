@@ -55,7 +55,7 @@ class ParticipantService
             // Envia imagem de exemplo
             $this->whatsAppService->sendImageMessage(
                 $phoneNumber,
-                "https://www.z-api.io/wp-content/themes/z-api/dist/images/logo.svg",
+                "https://cdn.cobrefacil.com.br/website/base/3b1/91c/2bd/modelo-cupom-fiscal-tradicional.png",
                 "Obrigad@! Agora envie uma foto nítida do seu cupom fiscal 📸"
             );
 
