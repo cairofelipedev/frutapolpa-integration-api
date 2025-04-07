@@ -34,7 +34,8 @@ class WebhookController extends Controller
             $participant,
             $phoneNumber,
             $data['text']['message'] ?? null,
-            $data['buttonsResponseMessage']['buttonId'] ?? null
+            $data['buttonsResponseMessage']['buttonId'] ?? null,
+            $data['image']['imageUrl'] ?? null
         );
     }
 }

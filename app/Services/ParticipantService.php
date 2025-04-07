@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Participant;
+use App\Models\Coupon;
 use App\Jobs\SendWhatsAppMessage;
 use Illuminate\Support\Facades\Log;
 
@@ -21,9 +22,9 @@ class ParticipantService
             return $this->handleButtonMessage($participant, $phoneNumber, $buttonId);
         }
 
-        // if ($mediaUrl && $participant->step === 3) {
-        //     return $this->handleImageSubmission($participant, $phoneNumber, $mediaUrl);
-        // }
+        if ($mediaUrl && $participant->step === 3) {
+            return $this->handleImageSubmission($participant, $phoneNumber, $mediaUrl);
+        }
 
         if ($textMessage) {
             return $this->handleTextMessage($participant, $phoneNumber, $textMessage);
@@ -37,6 +38,13 @@ class ParticipantService
         if ($buttonId === 'cadastrar_cupom') {
             $participant->step = 1;
             $participant->save();
+
+            // Cria cupom com imagem nula
+            Coupon::create([
+                'participant_id' => $participant->id,
+                'image' => null,
+            ]);
+
             return $this->sendPolpaOptions($phoneNumber);
         }
 
@@ -65,6 +73,28 @@ class ParticipantService
             default:
                 return $this->sendInitialOptions($phoneNumber);
         }
+    }
+
+    protected function handleImageSubmission(Participant $participant, $phoneNumber, $mediaUrl)
+    {
+        $coupon = $participant->coupons()->latest()->first();
+
+        if ($coupon) {
+            $coupon->image = $mediaUrl;
+            $coupon->save();
+
+            $this->sendTextMessage($phoneNumber, "Imagem recebida com sucesso! 🎉 Seu cupom será validado em breve. Obrigado por participar!");
+
+            Log::info("Imagem salva no cupom ID: {$coupon->id}, participante: {$participant->id}");
+        } else {
+            Log::warning("Nenhum cupom encontrado para participante ID: {$participant->id}");
+            $this->sendTextMessage($phoneNumber, "Não encontramos um cupom ativo para salvar essa imagem. Tente novamente.");
+        }
+
+        $participant->step = 0;
+        $participant->save();
+
+        return response()->json(['status' => 'image saved']);
     }
 
     protected function processCouponQuantity(Participant $participant, $phoneNumber, $quantity)

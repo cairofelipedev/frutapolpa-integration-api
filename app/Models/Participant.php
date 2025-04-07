@@ -27,4 +27,9 @@ class Participant extends Model
         'complement',
         'conversation_step'
     ];
+
+    public function coupons()
+    {
+        return $this->hasMany(Coupon::class);
+    }
 }
