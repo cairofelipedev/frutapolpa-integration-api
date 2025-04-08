@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Participant;
 use App\Models\Coupon;
 use App\Jobs\SendWhatsAppMessage;
+use App\Models\CouponCode;
 use Illuminate\Support\Facades\Log;
 
 class ParticipantService
@@ -39,7 +40,6 @@ class ParticipantService
             $participant->step = 1;
             $participant->save();
 
-            // Cria cupom com imagem nula
             Coupon::create([
                 'participant_id' => $participant->id,
                 'image' => null,
@@ -49,17 +49,28 @@ class ParticipantService
         }
 
         if (in_array($buttonId, ['1', '3', '5', '10', '15', '20', 'outro_valor'])) {
-            $participant->step = 3; // aguardando imagem
-            $participant->save();
+            $quantity = is_numeric($buttonId) ? intval($buttonId) : 0;
 
-            // Envia imagem de exemplo
-            $this->whatsAppService->sendImageMessage(
-                $phoneNumber,
-                "https://cdn.cobrefacil.com.br/website/base/3b1/91c/2bd/modelo-cupom-fiscal-tradicional.png",
-                "Obrigad@! Agora envie uma foto nítida do seu cupom fiscal 📸"
-            );
+            $coupon = $participant->coupons()->latest()->first();
+            if ($coupon) {
+                $coupon->quantity = $quantity;
+                $coupon->save();
 
-            return $this->sendTextMessage($phoneNumber, "Estamos quase lá! Envie agora a foto do seu cupom fiscal para validar sua participação.");
+                $this->generateCouponCodes($participant, $coupon, $quantity);
+
+                $participant->step = 3;
+                $participant->save();
+
+                $this->whatsAppService->sendImageMessage(
+                    $phoneNumber,
+                    "https://cdn.cobrefacil.com.br/website/base/3b1/91c/2bd/modelo-cupom-fiscal-tradicional.png",
+                    "Obrigad@! Agora envie uma foto nítida do seu cupom fiscal 📸"
+                );
+
+                return $this->sendTextMessage($phoneNumber, "Estamos quase lá! Envie agora a foto do seu cupom fiscal para validar sua participação.");
+            }
+
+            return $this->sendTextMessage($phoneNumber, "Erro: cupom não encontrado.");
         }
 
         return $this->sendInitialOptions($phoneNumber);
@@ -68,7 +79,7 @@ class ParticipantService
     protected function handleTextMessage(Participant $participant, $phoneNumber, $textMessage)
     {
         switch ($participant->step) {
-            case 2:
+            case 4:
                 return $this->processCouponQuantity($participant, $phoneNumber, $textMessage);
             default:
                 return $this->sendInitialOptions($phoneNumber);
@@ -83,16 +94,27 @@ class ParticipantService
             $coupon->image = $mediaUrl;
             $coupon->save();
 
-            $this->sendTextMessage($phoneNumber, "Imagem recebida com sucesso! 🎉 Seu cupom será validado em breve. Obrigado por participar!");
+            // Buscar os códigos da sorte já salvos
+            $codes = $coupon->codes()->pluck('code')->toArray();
+
+            if (!empty($codes)) {
+                $message = "Imagem recebida com sucesso! 🎉\n\n";
+                $message .= "Estes são seus cupons da sorte:\n";
+                $message .= implode("\n", $codes);
+            } else {
+                $message = "Imagem recebida, mas não encontramos os cupons gerados. Tente novamente ou fale com o suporte.";
+            }
+
+            $this->sendTextMessage($phoneNumber, $message);
+
+            $participant->step = 0;
+            $participant->save();
 
             Log::info("Imagem salva no cupom ID: {$coupon->id}, participante: {$participant->id}");
         } else {
             Log::warning("Nenhum cupom encontrado para participante ID: {$participant->id}");
             $this->sendTextMessage($phoneNumber, "Não encontramos um cupom ativo para salvar essa imagem. Tente novamente.");
         }
-
-        $participant->step = 0;
-        $participant->save();
 
         return response()->json(['status' => 'image saved']);
     }
@@ -163,5 +185,36 @@ class ParticipantService
             "Quantas polpas você cadastrou?",
             $buttons
         );
+    }
+
+    protected function generateCouponCodes(Participant $participant, Coupon $coupon, int $quantity)
+    {
+        $couponCount = 0;
+
+        if ($quantity >= 3 && $quantity < 5) {
+            $couponCount = 1;
+        } elseif ($quantity >= 5 && $quantity < 10) {
+            $couponCount = 2;
+        } elseif ($quantity >= 10) {
+            $couponCount = 3;
+        }
+
+        $generatedCoupons = [];
+
+        for ($i = 0; $i < $couponCount; $i++) {
+            $code = rand(100000, 999999);
+
+            CouponCode::create([
+                'participant_id' => $participant->id,
+                'coupon_id' => $coupon->id,
+                'code' => $code,
+            ]);
+
+            $generatedCoupons[] = $code;
+        }
+
+        // if (count($generatedCoupons)) {
+        //     $this->sendTextMessage($participant->phone, "Maravilha! Estes são seus cupons da sorte:\n" . implode("\n", $generatedCoupons));
+        // }
     }
 }

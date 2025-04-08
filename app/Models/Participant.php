@@ -32,4 +32,9 @@ class Participant extends Model
     {
         return $this->hasMany(Coupon::class);
     }
+
+    public function codes()
+    {
+        return $this->hasMany(CouponCode::class);
+    }
 }

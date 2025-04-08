@@ -13,4 +13,10 @@ class Coupon extends Model
     {
         return $this->belongsTo(Participant::class);
     }
+
+
+    public function codes()
+    {
+        return $this->hasMany(CouponCode::class);
+    }
 }
