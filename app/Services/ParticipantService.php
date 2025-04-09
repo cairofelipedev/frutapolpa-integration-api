@@ -70,7 +70,7 @@ class ParticipantService
                 // return $this->sendTextMessage($phoneNumber, "Estamos quase lá! Envie agora a foto do seu cupom fiscal para validar sua participação.");
             }
 
-            return $this->sendTextMessage($phoneNumber, "Erro: cupom não encontrado.");
+            // return $this->sendTextMessage($phoneNumber, "Erro: cupom não encontrado.");
         }
 
         return $this->sendInitialOptions($phoneNumber);
