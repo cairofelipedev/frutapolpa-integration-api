@@ -64,10 +64,10 @@ class ParticipantService
                 $this->whatsAppService->sendImageMessage(
                     $phoneNumber,
                     "https://cdn.cobrefacil.com.br/website/base/3b1/91c/2bd/modelo-cupom-fiscal-tradicional.png",
-                    "Obrigad@! Agora envie uma foto nítida do seu cupom fiscal 📸"
+                    "Certo! Agora envie a foto do seu comprovante 📸\n\nCaso ele seja muito grande, você pode dobrá-lo, mas lembre-se: as informações da compra das polpas devem estar visíveis."
                 );
 
-                return $this->sendTextMessage($phoneNumber, "Estamos quase lá! Envie agora a foto do seu cupom fiscal para validar sua participação.");
+                // return $this->sendTextMessage($phoneNumber, "Estamos quase lá! Envie agora a foto do seu cupom fiscal para validar sua participação.");
             }
 
             return $this->sendTextMessage($phoneNumber, "Erro: cupom não encontrado.");
@@ -98,13 +98,12 @@ class ParticipantService
             $codes = $coupon->codes()->pluck('code')->toArray();
 
             if (!empty($codes)) {
-                $message = "Imagem recebida com sucesso! 🎉\n\n";
-                $message .= "Estes são seus cupons da sorte:\n";
+                $message = "Imagem recebida com sucesso! 🎉\n\nMaravilha! Aqui estão os seus *números da sorte*:\n";
                 $message .= implode("\n", $codes);
             } else {
                 $message = "Imagem recebida, mas não encontramos os cupons gerados. Tente novamente ou fale com o suporte.";
             }
-
+            
             $this->sendTextMessage($phoneNumber, $message);
 
             $participant->step = 0;
@@ -154,35 +153,34 @@ class ParticipantService
     protected function sendInitialOptions($phoneNumber)
     {
         $buttons = [
-            ['id' => 'cadastrar_cupom', 'label' => 'Cadastrar Cupom'],
+            ['id' => 'cadastrar_cupom', 'label' => 'Cadastrar novo cupom'],
         ];
 
-        return $this->whatsAppService->sendButtonListMessage($phoneNumber, "O que você deseja fazer?", $buttons);
+        return $this->whatsAppService->sendButtonListMessage($phoneNumber, "Identifiquei que você já possui cadastro na promoção *Polpa Premiada 2025*! 🎉\n\nO que você deseja fazer?", $buttons);
     }
 
     public function sendNotRegisteredMessage($phoneNumber)
     {
-        $message = "Olá, seu número não se encontra cadastrado. Para participar, acesse agora *frutapolpa.com.br/participe*, preencha seu cadastro e comece a participar!";
+        $message = "Olá, bem-vindo(a) à promoção *Polpa Premiada 2025*! 🎉\n\nVamos fazer o seu cadastro? É simples e fácil!\n\nAcesse agora: *frutapolpa.com.br/participe* e clique em \"Fazer meu primeiro cadastro\".";
         dispatch(new SendWhatsAppMessage($phoneNumber, $message));
 
         Log::info("Mensagem enviada para número não cadastrado: {$phoneNumber}");
     }
-
     protected function sendPolpaOptions($phoneNumber)
     {
         $buttons = [
-            ['id' => '1', 'label' => '1'],
+            // ['id' => '1', 'label' => '1'],
             ['id' => '3', 'label' => '3'],
             ['id' => '5', 'label' => '5'],
             ['id' => '10', 'label' => '10'],
             ['id' => '15', 'label' => '15'],
             ['id' => '20', 'label' => '20'],
-            ['id' => 'outro_valor', 'label' => 'Outro valor'],
+            // ['id' => 'outro_valor', 'label' => 'Outro valor'],
         ];
 
         return $this->whatsAppService->sendButtonListMessage(
             $phoneNumber,
-            "Quantas polpas você cadastrou?",
+            "Quantas polpas você comprou?",
             $buttons
         );
     }
