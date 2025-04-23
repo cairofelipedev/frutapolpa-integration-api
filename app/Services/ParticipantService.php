@@ -100,6 +100,7 @@ class ParticipantService
             if (!empty($codes)) {
                 $message = "Obrigado por participar! Continue comprando Fruta Polpa e aumente a sua sorte para o próximo sorteio. *Fruta Polpa, a melhor!*🎉\n\nAqui estão os seus *números da sorte*:\n";
                 $message .= implode("\n", $codes);
+                $message .= "\n\n👉 Acompanhe aqui seus números da sorte, acesse com seu login e senha cadastrados no site  *https://frutapolpa.com.br/admin/login.php*";
             } else {
                 $message = "Imagem recebida, mas não encontramos os cupons gerados. Tente novamente ou fale com o suporte.";
             }
