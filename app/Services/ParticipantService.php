@@ -161,7 +161,7 @@ class ParticipantService
 
     public function sendNotRegisteredMessage($phoneNumber)
     {
-        $message = "Olá, bem-vindo(a) à promoção *Polpa Premiada 2025*! 🎉\n\nVamos fazer o seu cadastro? É simples e fácil!\n\nAcesse agora: *frutapolpa.com.br/participe* e clique em \"Fazer meu primeiro cadastro\".";
+        $message = "🍓 *Bem-vindo à Polpa Premiada 2025, da Fruta Polpa!* 🎉  \n\nVocê está a um passo de concorrer a prêmios incríveis com a *Melhor polpa de frutas do Brasil*!  \n\n👉 Cadastre-se agora mesmo — é rápido e fácil:  *frutapolpa.com.br/participe* e clique em \"Fazer meu primeiro cadastro\" e pronto.\n\n💥 Aproveite nossa promoção, quanto mais você compra, mais chances tem de ganhar!";
         dispatch(new SendWhatsAppMessage($phoneNumber, $message));
 
         Log::info("Mensagem enviada para número não cadastrado: {$phoneNumber}");
