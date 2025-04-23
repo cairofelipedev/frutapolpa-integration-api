@@ -67,7 +67,7 @@ class ParticipantService
                     "Certo! Agora envie a foto do seu comprovante 📸\n\nCaso ele seja muito grande, você pode dobrá-lo, mas lembre-se: as informações da compra das polpas devem estar visíveis."
                 );
 
-                // return $this->sendTextMessage($phoneNumber, "Estamos quase lá! Envie agora a foto do seu cupom fiscal para validar sua participação.");
+                return $this->sendTextMessage($phoneNumber, "Estamos quase lá! Envie agora a foto do seu cupom fiscal para validar sua participação.");
             }
 
             // return $this->sendTextMessage($phoneNumber, "Erro: cupom não encontrado.");
@@ -98,7 +98,7 @@ class ParticipantService
             $codes = $coupon->codes()->pluck('code')->toArray();
 
             if (!empty($codes)) {
-                $message = "Imagem recebida com sucesso! 🎉\n\nMaravilha! Aqui estão os seus *números da sorte*:\n";
+                $message = "Obrigado por participar! Continue comprando Fruta Polpa e aumente a sua sorte para o próximo sorteio. *Fruta Polpa, a melhor!*🎉\n\nAqui estão os seus *números da sorte*:\n";
                 $message .= implode("\n", $codes);
             } else {
                 $message = "Imagem recebida, mas não encontramos os cupons gerados. Tente novamente ou fale com o suporte.";
