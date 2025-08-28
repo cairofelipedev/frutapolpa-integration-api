@@ -48,7 +48,7 @@ class ParticipantService
             return $this->sendPolpaOptions($phoneNumber);
         }
 
-        if (in_array($buttonId, ['1', '3', '5', '10', '15', '20', 'outro_valor'])) {
+        if (in_array($buttonId, ['3', '6', '9', '12', '15'])) {
             $quantity = is_numeric($buttonId) ? intval($buttonId) : 0;
 
             $coupon = $participant->coupons()->latest()->first();
@@ -94,7 +94,6 @@ class ParticipantService
             $coupon->image = $mediaUrl;
             $coupon->save();
 
-            // Buscar os códigos da sorte já salvos
             $codes = $coupon->codes()->pluck('code')->toArray();
 
             if (!empty($codes)) {
@@ -104,7 +103,7 @@ class ParticipantService
             } else {
                 $message = "Imagem recebida, mas não encontramos os cupons gerados. Tente novamente ou fale com o suporte.";
             }
-            
+
             $this->sendTextMessage($phoneNumber, $message);
 
             $participant->step = 0;
@@ -122,28 +121,28 @@ class ParticipantService
     protected function processCouponQuantity(Participant $participant, $phoneNumber, $quantity)
     {
         $quantity = intval($quantity);
-        $couponCount = 0;
 
-        if ($quantity >= 3 && $quantity < 5) {
-            $couponCount = 1;
-        } elseif ($quantity >= 5 && $quantity < 10) {
-            $couponCount = 2;
-        } elseif ($quantity >= 10) {
-            $couponCount = 3;
+        $coupon = $participant->coupons()->latest()->first();
+
+        if (!$coupon) {
+            return $this->sendTextMessage($phoneNumber, "Erro: nenhum cupom ativo encontrado.");
         }
 
-        $generatedCoupons = [];
-        for ($i = 0; $i < $couponCount; $i++) {
-            $generatedCoupons[] = rand(100000, 999999);
+        // Pega os códigos já salvos no banco
+        $codes = $coupon->codes()->pluck('code')->toArray();
+
+        if (!empty($codes)) {
+            $message = "Maravilha! Estes são seus cupons da sorte:\n" . implode("\n", $codes);
+        } else {
+            $message = "Não encontramos cupons gerados. Tente novamente ou fale com o suporte.";
         }
 
-        $message = "Maravilha! Estes são seus cupons da sorte:\n" . implode("\n", $generatedCoupons);
         $this->sendTextMessage($phoneNumber, $message);
 
         $participant->step = 0;
         $participant->save();
 
-        return response()->json(['status' => 'coupons generated']);
+        return response()->json(['status' => 'coupons sent', 'coupons' => $codes]);
     }
 
     protected function sendTextMessage($phoneNumber, $messageBody)
@@ -162,7 +161,7 @@ class ParticipantService
 
     public function sendNotRegisteredMessage($phoneNumber)
     {
-        $message = "🍓 *Bem-vindo à Polpa Premiada 2025, da Fruta Polpa!* 🎉  \n\nVocê está a um passo de concorrer a prêmios incríveis com a *Melhor polpa de frutas do Brasil*!  \n\n👉 Cadastre-se agora mesmo — é rápido e fácil:  *frutapolpa.com.br/participe* e clique em \"Fazer meu primeiro cadastro\" e pronto.\n\n💥 Aproveite nossa promoção, quanto mais você compra, mais chances tem de ganhar!";
+        $message = "🍓 *Bem-vindo à Polpa Premiada 2025, da Fruta Polpa!* 🎉  \n\nVocê está a um passo de concorrer a uma moto 0 km com a *Melhor polpa de frutas do Brasil*!  \n\n👉 Cadastre-se agora mesmo — é rápido e fácil:  *frutapolpa.com.br/participe* e clique em \"Fazer meu primeiro cadastro\" e pronto.\n\n💥 Aproveite nossa promoção, quanto mais você compra, mais chances tem de ganhar!";
         dispatch(new SendWhatsAppMessage($phoneNumber, $message));
 
         Log::info("Mensagem enviada para número não cadastrado: {$phoneNumber}");
@@ -172,10 +171,10 @@ class ParticipantService
         $buttons = [
             // ['id' => '1', 'label' => '1'],
             ['id' => '3', 'label' => '3'],
-            ['id' => '5', 'label' => '5'],
-            ['id' => '10', 'label' => '10'],
+            ['id' => '6', 'label' => '6'],
+            ['id' => '9', 'label' => '9'],
+            ['id' => '12', 'label' => '12'],
             ['id' => '15', 'label' => '15'],
-            ['id' => '20', 'label' => '20'],
             // ['id' => 'outro_valor', 'label' => 'Outro valor'],
         ];
 
@@ -188,32 +187,31 @@ class ParticipantService
 
     protected function generateCouponCodes(Participant $participant, Coupon $coupon, int $quantity)
     {
-        $couponCount = 0;
-
-        if ($quantity >= 3 && $quantity < 5) {
-            $couponCount = 1;
-        } elseif ($quantity >= 5 && $quantity < 10) {
-            $couponCount = 2;
-        } elseif ($quantity >= 10) {
-            $couponCount = 3;
-        }
+        $couponCount = min(intdiv($quantity, 3), 5);
 
         $generatedCoupons = [];
 
         for ($i = 0; $i < $couponCount; $i++) {
-            $code = rand(100000, 999999);
+            $code = $this->generateUniqueCode();
 
             CouponCode::create([
                 'participant_id' => $participant->id,
-                'coupon_id' => $coupon->id,
-                'code' => $code,
+                'coupon_id'      => $coupon->id,
+                'code'           => $code,
             ]);
 
             $generatedCoupons[] = $code;
         }
 
-        // if (count($generatedCoupons)) {
-        //     $this->sendTextMessage($participant->phone, "Maravilha! Estes são seus cupons da sorte:\n" . implode("\n", $generatedCoupons));
-        // }
+        return $generatedCoupons;
+    }
+
+    protected function generateUniqueCode()
+    {
+        do {
+            $code = rand(100000, 999999);
+        } while (CouponCode::where('code', $code)->exists());
+
+        return $code;
     }
 }
