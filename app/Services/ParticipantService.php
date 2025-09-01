@@ -161,11 +161,17 @@ class ParticipantService
 
     public function sendNotRegisteredMessage($phoneNumber)
     {
-        $message = "🍓 *Bem-vindo à Polpa Premiada 2025, da Fruta Polpa!* 🎉  \n\nVocê está a um passo de concorrer a uma moto 0 km com a *Melhor polpa de frutas do Brasil*!  \n\n👉 Cadastre-se agora mesmo — é rápido e fácil:  *frutapolpa.com.br/participe* e clique em \"Fazer meu primeiro cadastro\" e pronto.\n\n💥 Aproveite nossa promoção, quanto mais você compra, mais chances tem de ganhar!";
-        dispatch(new SendWhatsAppMessage($phoneNumber, $message));
+        $message = "🍓 *Bem-vindo à Polpa Premiada 2025, da Fruta Polpa!* 🎉\n\nVocê está a um passo de concorrer a uma moto 0 km com a *Melhor polpa de frutas do Brasil*! 🚀\n\n👉 Gostaria de iniciar seu cadastro?";
 
-        Log::info("Mensagem enviada para número não cadastrado: {$phoneNumber}");
+        $buttons = [
+            ['id' => 'register_yes', 'label' => 'SIM'],
+            ['id' => 'register_no', 'label' => 'NÃO'],
+        ];
+
+        return $this->whatsAppService->sendButtonListMessage($phoneNumber, $message, $buttons);
     }
+
+
     protected function sendPolpaOptions($phoneNumber)
     {
         $buttons = [
@@ -213,5 +219,75 @@ class ParticipantService
         } while (CouponCode::where('code', $code)->exists());
 
         return $code;
+    }
+
+    public function handleNewParticipantFlow($phoneNumber, $textMessage, $buttonId = null)
+    {
+        $participant = Participant::where('phone', $phoneNumber)->first();
+
+        // Se ainda não existe participante → primeira interação
+        if (!$participant) {
+            // Se clicou em botão
+            if ($buttonId === 'register_yes') {
+                $participant = Participant::create([
+                    'phone' => $phoneNumber,
+                    'step_register' => 1,
+                ]);
+
+                return $this->sendTextMessage(
+                    $phoneNumber,
+                    "Ótimo! Vamos começar seu cadastro 🎉\nQual o seu *nome completo*?"
+                );
+            }
+
+            if ($buttonId === 'register_no') {
+                return $this->sendTextMessage(
+                    $phoneNumber,
+                    "Tudo bem! Caso queira participar depois, é só mandar uma mensagem por aqui 🍓"
+                );
+            }
+
+            // Primeira mensagem → exibe menu de boas-vindas com botões
+            return $this->sendNotRegisteredMessage($phoneNumber);
+        }
+
+        // Já existe participante em processo de cadastro
+        switch ($participant->step_register) {
+            case 1:
+                $this->saveName($participant, $textMessage);
+                $participant->step_register = 2;
+                $participant->save();
+                return $this->sendTextMessage($phoneNumber, "Perfeito! Agora me informe o seu *CEP* 🏠");
+
+            case 2:
+                $participant->cep = $textMessage;
+                $participant->step_register = 3;
+                $participant->save();
+                return $this->sendTextMessage($phoneNumber, "Obrigado! Qual é a sua *cidade*?");
+
+            case 3:
+                $participant->city = $textMessage;
+                $participant->step_register = 4;
+                $participant->save();
+                return $this->sendTextMessage($phoneNumber, "Beleza! Agora digite o seu *bairro*");
+
+            case 4:
+                $participant->neighborhood = $textMessage;
+                $participant->step_register = 0; // cadastro finalizado
+                $participant->save();
+
+                $this->sendTextMessage($phoneNumber, "🎉 Cadastro concluído com sucesso! Agora você já pode cadastrar seus cupons.");
+
+                // 👉 já cai no fluxo normal
+                return $this->sendInitialOptions($phoneNumber);
+        }
+
+        return response()->json(['status' => 'awaiting register']);
+    }
+
+    protected function saveName(Participant $participant, $fullName)
+    {
+        $participant->first_name = trim($fullName); // nome completo direto aqui
+        $participant->save();
     }
 }
