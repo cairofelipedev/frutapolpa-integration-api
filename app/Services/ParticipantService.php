@@ -99,7 +99,7 @@ class ParticipantService
             if (!empty($codes)) {
                 $message = "Obrigado por participar! Continue comprando Fruta Polpa e aumente a sua sorte para o próximo sorteio. *Fruta Polpa, a melhor!*🎉\n\nAqui estão os seus *números da sorte*:\n";
                 $message .= implode("\n", $codes);
-                $message .= "\n\n👉 Acompanhe aqui seus números da sorte, acesse com seu login e senha cadastrados no site  *https://frutapolpa.com.br/admin/login.php*";
+                $message .= "\n\n👉 Cadastre um novo cupom sempre que quiser e aumente as suas chances de ganhar. É só enviar mensagem novamente e seguir o passo a passo*";
             } else {
                 $message = "Imagem recebida, mas não encontramos os cupons gerados. Tente novamente ou fale com o suporte.";
             }
@@ -156,7 +156,7 @@ class ParticipantService
             ['id' => 'cadastrar_cupom', 'label' => 'Cadastrar novo cupom'],
         ];
 
-        return $this->whatsAppService->sendButtonListMessage($phoneNumber, "Identifiquei que você já possui cadastro na promoção *Polpa Premiada 2025*! 🎉\n\nO que você deseja fazer?", $buttons);
+        return $this->whatsAppService->sendButtonListMessage($phoneNumber, "Bem-vindo participante ao cadastro na promoção *Polpa Premiada 2025*! 🎉\n\nO que você deseja fazer?", $buttons);
     }
 
     public function sendNotRegisteredMessage($phoneNumber)
@@ -263,17 +263,17 @@ class ParticipantService
                 $participant->cep = $textMessage;
                 $participant->step_register = 3;
                 $participant->save();
-                return $this->sendTextMessage($phoneNumber, "Obrigado! Qual é a sua *cidade*?");
+                return $this->sendTextMessage($phoneNumber, "Obrigado! Qual é o seu *Estado*?");
 
             case 3:
-                $participant->city = $textMessage;
+                $participant->state = $textMessage;
                 $participant->step_register = 4;
                 $participant->save();
-                return $this->sendTextMessage($phoneNumber, "Beleza! Agora digite o seu *bairro*");
+                return $this->sendTextMessage($phoneNumber, "Beleza! Agora digite a sua *Cidade*");
 
             case 4:
-                $participant->neighborhood = $textMessage;
-                $participant->step_register = 0; // cadastro finalizado
+                $participant->city = $textMessage;
+                $participant->step_register = 0;
                 $participant->save();
 
                 $this->sendTextMessage($phoneNumber, "🎉 Cadastro concluído com sucesso! Agora você já pode cadastrar seus cupons.");

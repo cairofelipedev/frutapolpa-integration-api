@@ -24,18 +24,12 @@ class WebhookController extends Controller
         $phoneNumber = $data['phone'];
         $participant = Participant::where('phone', $phoneNumber)->first();
 
-        if (!$participant) {
-            Log::warning('Participante não encontrado ou inativo.', ['phone' => $phoneNumber]);
-            // $this->participantService->sendNotRegisteredMessage($phoneNumber);
-            // return response()->json(['status' => 'error', 'message' => 'Participante não encontrado ou inativo.']);
-
-            if (!$participant) {
-                return $this->participantService->handleNewParticipantFlow(
-                    $phoneNumber,
-                    $data['text']['message'] ?? null,
-                    $data['buttonsResponseMessage']['buttonId'] ?? null
-                );
-            }
+        if (!$participant || $participant->step_register != 0) {
+            return $this->participantService->handleNewParticipantFlow(
+                $phoneNumber,
+                $data['text']['message'] ?? null,
+                $data['buttonsResponseMessage']['buttonId'] ?? null
+            );
         }
 
         return $this->participantService->handleParticipantMessage(
