@@ -272,14 +272,51 @@ class ParticipantService
                 return $this->sendTextMessage($phoneNumber, "Beleza! Agora digite a sua *Cidade*");
 
             case 4:
-                $participant->city = $textMessage;
-                $participant->step_register = 0;
+                $participant->neighborhood = $textMessage;
+                $participant->step_register = 5;
+                $participant->save();
+                return $this->sendTextMessage($phoneNumber, "Agora preciso do seu *CPF* (apenas números)");
+
+            case 5:
+                $cpf = preg_replace('/\D/', '', $textMessage); // mantém só números
+
+                if (!$this->isValidCPF($cpf)) {
+                    return $this->sendTextMessage($phoneNumber, "❌ CPF inválido. Por favor, informe um CPF válido.");
+                }
+
+                $participant->cpf = $cpf;
+                $participant->step_register = 6;
                 $participant->save();
 
-                $this->sendTextMessage($phoneNumber, "🎉 Cadastro concluído com sucesso! Agora você já pode cadastrar seus cupons.");
+                // Envia botões de aceite da LGPD
+                $buttons = [
+                    ['id' => 'privacy_yes', 'label' => 'SIM'],
+                    ['id' => 'privacy_no', 'label' => 'NÃO'],
+                ];
 
-                // 👉 já cai no fluxo normal
-                return $this->sendInitialOptions($phoneNumber);
+                return $this->whatsAppService->sendButtonListMessage(
+                    $phoneNumber,
+                    "📜 Para finalizar seu cadastro, você declara estar ciente e autoriza a coleta, o tratamento e o uso dos meus dados pessoais exclusivamente para fins de participação, validação e eventual premiação na presente promoção, em conformidade com a Lei Geral de Proteção de Dados (Lei nº 13.709/2018).",
+                    $buttons
+                );
+
+            case 6:
+                if ($buttonId === 'privacy_yes') {
+                    $participant->step_register = 0; // cadastro concluído
+                    $participant->save();
+
+                    $this->sendTextMessage($phoneNumber, "🎉 Cadastro concluído com sucesso! Agora você já pode cadastrar seus cupons.");
+                    return $this->sendInitialOptions($phoneNumber);
+                }
+
+                if ($buttonId === 'privacy_no') {
+                    $participant->step_register = 0; // encerra sem permitir cupons
+                    $participant->save();
+
+                    return $this->sendTextMessage($phoneNumber, "😢 Tudo bem! Sem aceitar a política de privacidade não é possível participar da promoção.");
+                }
+
+                return $this->sendTextMessage($phoneNumber, "Por favor, escolha uma opção: SIM ou NÃO.");
         }
 
         return response()->json(['status' => 'awaiting register']);
@@ -287,7 +324,28 @@ class ParticipantService
 
     protected function saveName(Participant $participant, $fullName)
     {
-        $participant->first_name = trim($fullName); // nome completo direto aqui
+        $participant->first_name = trim($fullName);
         $participant->save();
+    }
+
+    protected function isValidCPF($cpf)
+    {
+        // CPF precisa ter 11 dígitos
+        if (strlen($cpf) != 11 || preg_match('/(\d)\1{10}/', $cpf)) {
+            return false;
+        }
+
+        // Validação dos dígitos verificadores
+        for ($t = 9; $t < 11; $t++) {
+            $d = 0;
+            for ($c = 0; $c < $t; $c++) {
+                $d += $cpf[$c] * (($t + 1) - $c);
+            }
+            $d = ((10 * $d) % 11) % 10;
+            if ($cpf[$c] != $d) {
+                return false;
+            }
+        }
+        return true;
     }
 }
