@@ -63,7 +63,7 @@ class ParticipantService
 
                 $this->whatsAppService->sendImageMessage(
                     $phoneNumber,
-                    "https://cdn.cobrefacil.com.br/website/base/3b1/91c/2bd/modelo-cupom-fiscal-tradicional.png",
+                    "https://frutapolpa.365chats.com/cupom.jpeg",
                     "Certo! Agora envie a foto do seu comprovante 📸\n\nCaso ele seja muito grande, você pode dobrá-lo, mas lembre-se: as informações da compra das polpas devem estar visíveis."
                 );
 
