@@ -18,7 +18,9 @@ class Participant extends Model
         'cep',
         'state',
         'city',
-        'step_register'
+        'step_register',
+        'full_name',
+        'last_message_at'
     ];
 
     public function coupons()

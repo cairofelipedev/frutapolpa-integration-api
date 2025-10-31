@@ -229,7 +229,6 @@ class ParticipantService
 
         // Se ainda não existe participante → primeira interação
         if (!$participant) {
-            // Se clicou em botão SIM → inicia cadastro
             if ($buttonId === 'register_yes') {
                 $participant = Participant::create([
                     'phone' => $phoneNumber,
@@ -242,7 +241,6 @@ class ParticipantService
                 );
             }
 
-            // Se clicou em NÃO → encerra
             if ($buttonId === 'register_no') {
                 return $this->sendTextMessage(
                     $phoneNumber,
@@ -250,48 +248,90 @@ class ParticipantService
                 );
             }
 
-            // Primeira mensagem recebida (sem cadastro) → mostra mensagem de boas-vindas personalizada
             return $this->sendNotRegisteredMessage($phoneNumber, $senderName);
         }
 
-        // Já existe participante em processo de cadastro
+        // 🔹 Fluxo do cadastro
         switch ($participant->step_register) {
             case 1:
-                $this->saveName($participant, $textMessage);
-                $participant->step_register = 2;
-                $participant->save();
-                return $this->sendTextMessage($phoneNumber, "Perfeito! Agora me informe o seu *CEP* 🏠");
+                // Perguntou o nome completo
+                if ($buttonId === null && $textMessage) {
+                    // Armazena temporariamente o nome completo para confirmação
+                    $participant->full_name = $textMessage;
+                    $participant->save();
+
+                    $buttons = [
+                        ['id' => 'confirm_name_yes', 'label' => 'SIM'],
+                        ['id' => 'confirm_name_no', 'label' => 'NÃO'],
+                    ];
+
+                    return $this->whatsAppService->sendButtonListMessage(
+                        $phoneNumber,
+                        "Confirme, este é seu nome completo?",
+                        $buttons
+                    );
+                }
+
+                // Se clicou SIM → confirma nome e segue
+                if ($buttonId === 'confirm_name_yes') {
+                    $fullName = trim($participant->full_name);
+                    $firstName = explode(' ', $fullName)[0] ?? '';
+
+                    $participant->first_name = $firstName;
+                    $participant->step_register = 2;
+                    $participant->save();
+
+                    return $this->sendTextMessage(
+                        $phoneNumber,
+                        "Perfeito, *{$firstName}*! Agora me informe o seu *CEP* 🏠"
+                    );
+                }
+
+                // Se clicou NÃO → repete a pergunta
+                if ($buttonId === 'confirm_name_no') {
+                    $participant->full_name = null;
+                    $participant->save();
+
+                    return $this->sendTextMessage(
+                        $phoneNumber,
+                        "Sem problemas! Me diga novamente o seu *nome completo* 😊"
+                    );
+                }
+
+                break;
 
             case 2:
                 $participant->cep = $textMessage;
                 $participant->step_register = 3;
                 $participant->save();
-                return $this->sendTextMessage($phoneNumber, "Obrigado! Qual é o seu *Estado*?");
+
+                return $this->sendTextMessage($phoneNumber, "Obrigado, *{$participant->first_name}*! Qual é o seu *Estado*?");
 
             case 3:
                 $participant->state = $textMessage;
                 $participant->step_register = 4;
                 $participant->save();
-                return $this->sendTextMessage($phoneNumber, "Beleza! Agora digite a sua *Cidade*");
+
+                return $this->sendTextMessage($phoneNumber, "Beleza, *{$participant->first_name}*! Agora digite a sua *Cidade*");
 
             case 4:
                 $participant->neighborhood = $textMessage;
                 $participant->step_register = 5;
                 $participant->save();
-                return $this->sendTextMessage($phoneNumber, "Agora preciso do seu *CPF* (apenas números)");
+
+                return $this->sendTextMessage($phoneNumber, "Certo, *{$participant->first_name}*! Agora preciso do seu *CPF* (apenas números)");
 
             case 5:
-                $cpf = preg_replace('/\D/', '', $textMessage); // mantém só números
+                $cpf = preg_replace('/\D/', '', $textMessage);
 
                 if (!$this->isValidCPF($cpf)) {
-                    return $this->sendTextMessage($phoneNumber, "❌ CPF inválido. Por favor, informe um CPF válido.");
+                    return $this->sendTextMessage($phoneNumber, "❌ CPF inválido. Por favor, informe um CPF válido, *{$participant->first_name}*.");
                 }
 
                 $participant->cpf = $cpf;
                 $participant->step_register = 6;
                 $participant->save();
 
-                // Envia botões de aceite da LGPD
                 $buttons = [
                     ['id' => 'privacy_yes', 'label' => 'SIM'],
                     ['id' => 'privacy_no', 'label' => 'NÃO'],
@@ -299,31 +339,32 @@ class ParticipantService
 
                 return $this->whatsAppService->sendButtonListMessage(
                     $phoneNumber,
-                    "📜 Para finalizar seu cadastro, você declara estar ciente e autoriza a coleta, o tratamento e o uso dos meus dados pessoais exclusivamente para fins de participação, validação e eventual premiação na presente promoção, em conformidade com a Lei Geral de Proteção de Dados (Lei nº 13.709/2018).",
+                    "📜 {$participant->first_name}, para finalizar seu cadastro, você autoriza o uso dos seus dados conforme a LGPD?",
                     $buttons
                 );
 
             case 6:
                 if ($buttonId === 'privacy_yes') {
-                    $participant->step_register = 0; // cadastro concluído
+                    $participant->step_register = 0;
                     $participant->save();
 
-                    $this->sendTextMessage($phoneNumber, "🎉 Cadastro concluído com sucesso! Agora você já pode cadastrar seus cupons.");
+                    $this->sendTextMessage($phoneNumber, "🎉 Cadastro concluído com sucesso, *{$participant->first_name}*! Agora você já pode cadastrar seus cupons.");
                     return $this->sendInitialOptions($phoneNumber);
                 }
 
                 if ($buttonId === 'privacy_no') {
-                    $participant->step_register = 0; // encerra sem permitir cupons
+                    $participant->step_register = 0;
                     $participant->save();
 
-                    return $this->sendTextMessage($phoneNumber, "😢 Tudo bem! Sem aceitar a política de privacidade não é possível participar da promoção.");
+                    return $this->sendTextMessage($phoneNumber, "😢 Tudo bem, *{$participant->first_name}*! Sem aceitar a política de privacidade não é possível participar da promoção.");
                 }
 
-                return $this->sendTextMessage($phoneNumber, "Por favor, escolha uma opção: SIM ou NÃO.");
+                return $this->sendTextMessage($phoneNumber, "Por favor, escolha uma opção: SIM ou NÃO, *{$participant->first_name}*.");
         }
 
         return response()->json(['status' => 'awaiting register']);
     }
+
 
     protected function saveName(Participant $participant, $fullName)
     {
