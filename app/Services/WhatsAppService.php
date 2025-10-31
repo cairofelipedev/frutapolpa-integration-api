@@ -13,10 +13,10 @@ class WhatsAppService
 
     public function __construct()
     {
-        $this->baseUrl = 'https://api.z-api.io';
-        $this->instanceId = '3DC0E0D64A9790DFD0149E273AF67FF4';
-        $this->token = '83EBFA6CEFB51769F56359B0';
-        $this->clientToken = 'F0da12f62c208459eab9b5139d3732df5S';
+  $this->baseUrl = env('WHATSAPP_BASE_URL', 'https://api.z-api.io');
+        $this->instanceId = env('WHATSAPP_INSTANCE_ID');
+        $this->token = env('WHATSAPP_TOKEN');
+        $this->clientToken = env('WHATSAPP_CLIENT_TOKEN');
     }
 
     protected function getHeaders()

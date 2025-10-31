@@ -159,9 +159,12 @@ class ParticipantService
         return $this->whatsAppService->sendButtonListMessage($phoneNumber, "Bem-vindo participante ao cadastro na promoção *Polpa Premiada 2025*! 🎉\n\nO que você deseja fazer?", $buttons);
     }
 
-    public function sendNotRegisteredMessage($phoneNumber)
+    public function sendNotRegisteredMessage($phoneNumber, $senderName = null)
     {
-        $message = "🍓 *Bem-vindo à Polpa Premiada 2025, da Fruta Polpa!* 🎉\n\nVocê está a um passo de concorrer a uma moto 0 km com a *Melhor polpa de frutas do Brasil*! 🚀\n\n👉 Gostaria de iniciar seu cadastro?";
+        // Extrai apenas o primeiro nome, se possível
+        $firstName = $senderName ? explode(' ', trim($senderName))[0] : 'participante';
+
+        $message = "🍓 *Olá, {$firstName}!* 🎉\n\nBem-vindo à *Polpa Premiada 2025, da Fruta Polpa!* 🎁\n\nVocê está a um passo de concorrer a uma *Moto 0 km* 🚀 com a *Melhor polpa de frutas do Brasil*! 😍\n\n👉 Gostaria de iniciar seu cadastro?";
 
         $buttons = [
             ['id' => 'register_yes', 'label' => 'SIM'],
@@ -170,7 +173,6 @@ class ParticipantService
 
         return $this->whatsAppService->sendButtonListMessage($phoneNumber, $message, $buttons);
     }
-
 
     protected function sendPolpaOptions($phoneNumber)
     {
@@ -221,13 +223,13 @@ class ParticipantService
         return $code;
     }
 
-    public function handleNewParticipantFlow($phoneNumber, $textMessage, $buttonId = null)
+    public function handleNewParticipantFlow($phoneNumber, $textMessage, $buttonId = null, $senderName = null)
     {
         $participant = Participant::where('phone', $phoneNumber)->first();
 
         // Se ainda não existe participante → primeira interação
         if (!$participant) {
-            // Se clicou em botão
+            // Se clicou em botão SIM → inicia cadastro
             if ($buttonId === 'register_yes') {
                 $participant = Participant::create([
                     'phone' => $phoneNumber,
@@ -240,6 +242,7 @@ class ParticipantService
                 );
             }
 
+            // Se clicou em NÃO → encerra
             if ($buttonId === 'register_no') {
                 return $this->sendTextMessage(
                     $phoneNumber,
@@ -247,8 +250,8 @@ class ParticipantService
                 );
             }
 
-            // Primeira mensagem → exibe menu de boas-vindas com botões
-            return $this->sendNotRegisteredMessage($phoneNumber);
+            // Primeira mensagem recebida (sem cadastro) → mostra mensagem de boas-vindas personalizada
+            return $this->sendNotRegisteredMessage($phoneNumber, $senderName);
         }
 
         // Já existe participante em processo de cadastro

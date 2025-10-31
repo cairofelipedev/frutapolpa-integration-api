@@ -22,13 +22,15 @@ class WebhookController extends Controller
         Log::info('Webhook recebido', $data);
 
         $phoneNumber = $data['phone'];
+        $senderName = $data['senderName'] ?? null; // 👈 aqui pegamos o nome
         $participant = Participant::where('phone', $phoneNumber)->first();
 
         if (!$participant || $participant->step_register != 0) {
             return $this->participantService->handleNewParticipantFlow(
                 $phoneNumber,
                 $data['text']['message'] ?? null,
-                $data['buttonsResponseMessage']['buttonId'] ?? null
+                $data['buttonsResponseMessage']['buttonId'] ?? null,
+                $senderName // 👈 passa o nome pro service
             );
         }
 
