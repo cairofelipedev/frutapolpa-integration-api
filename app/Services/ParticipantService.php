@@ -69,8 +69,6 @@ class ParticipantService
 
                 return $this->sendTextMessage($phoneNumber, "Estamos quase lá! Envie agora a foto do seu cupom fiscal para validar sua participação.");
             }
-
-            // return $this->sendTextMessage($phoneNumber, "Erro: cupom não encontrado.");
         }
 
         return $this->sendInitialOptions($phoneNumber);
@@ -97,9 +95,9 @@ class ParticipantService
             $codes = $coupon->codes()->pluck('code')->toArray();
 
             if (!empty($codes)) {
-                $message = "Obrigado por participar! Continue comprando Fruta Polpa e aumente a sua sorte para o próximo sorteio. *Fruta Polpa, a melhor!*🎉\n\nAqui estão os seus *números da sorte*:\n";
+                $message = "Obrigado por participar, *{$participant->first_name}*! 🎉\n\nContinue comprando Fruta Polpa e aumente a sua sorte para o próximo sorteio. 🍓\n\nSeus *números da sorte* são:\n";
                 $message .= implode("\n", $codes);
-                $message .= "\n\n👉 Cadastre um novo cupom sempre que quiser e aumente as suas chances de ganhar. É só enviar mensagem novamente e seguir o passo a passo*";
+                $message .= "\n\n👉 Cadastre um novo cupom sempre que quiser para aumentar suas chances de ganhar!";
             } else {
                 $message = "Imagem recebida, mas não encontramos os cupons gerados. Tente novamente ou fale com o suporte.";
             }
@@ -128,11 +126,10 @@ class ParticipantService
             return $this->sendTextMessage($phoneNumber, "Erro: nenhum cupom ativo encontrado.");
         }
 
-        // Pega os códigos já salvos no banco
         $codes = $coupon->codes()->pluck('code')->toArray();
 
         if (!empty($codes)) {
-            $message = "Maravilha! Estes são seus cupons da sorte:\n" . implode("\n", $codes);
+            $message = "Perfeito, *{$participant->first_name}*! Estes são seus cupons da sorte:\n" . implode("\n", $codes);
         } else {
             $message = "Não encontramos cupons gerados. Tente novamente ou fale com o suporte.";
         }
@@ -152,16 +149,22 @@ class ParticipantService
 
     protected function sendInitialOptions($phoneNumber)
     {
+        $participant = Participant::where('phone', $phoneNumber)->first();
+        $firstName = $participant && $participant->first_name ? $participant->first_name : 'participante';
+
         $buttons = [
             ['id' => 'cadastrar_cupom', 'label' => 'Cadastrar novo cupom'],
         ];
 
-        return $this->whatsAppService->sendButtonListMessage($phoneNumber, "Bem-vindo participante ao cadastro na promoção *Polpa Premiada 2025*! 🎉\n\nO que você deseja fazer?", $buttons);
+        return $this->whatsAppService->sendButtonListMessage(
+            $phoneNumber,
+            "🍓 Olá, *{$firstName}!* 👋\nBem-vindo novamente à *Polpa Premiada 2025*! 🎉\n\nO que você deseja fazer?",
+            $buttons
+        );
     }
 
     public function sendNotRegisteredMessage($phoneNumber, $senderName = null)
     {
-        // Extrai apenas o primeiro nome, se possível
         $firstName = $senderName ? explode(' ', trim($senderName))[0] : 'participante';
 
         $message = "🍓 *Olá, {$firstName}!* 🎉\n\nBem-vindo à *Polpa Premiada 2025, da Fruta Polpa!* 🎁\n\nVocê está a um passo de concorrer a uma *Moto 0 km* 🚀 com a *Melhor polpa de frutas do Brasil*! 😍\n\n👉 Gostaria de iniciar seu cadastro?";
@@ -177,13 +180,11 @@ class ParticipantService
     protected function sendPolpaOptions($phoneNumber)
     {
         $buttons = [
-            // ['id' => '1', 'label' => '1'],
             ['id' => '3', 'label' => '3'],
             ['id' => '6', 'label' => '6'],
             ['id' => '9', 'label' => '9'],
             ['id' => '12', 'label' => '12'],
             ['id' => '15', 'label' => '15'],
-            // ['id' => 'outro_valor', 'label' => 'Outro valor'],
         ];
 
         return $this->whatsAppService->sendButtonListMessage(
@@ -196,7 +197,6 @@ class ParticipantService
     protected function generateCouponCodes(Participant $participant, Coupon $coupon, int $quantity)
     {
         $couponCount = min(intdiv($quantity, 3), 5);
-
         $generatedCoupons = [];
 
         for ($i = 0; $i < $couponCount; $i++) {
@@ -227,7 +227,6 @@ class ParticipantService
     {
         $participant = Participant::where('phone', $phoneNumber)->first();
 
-        // Se ainda não existe participante → primeira interação
         if (!$participant) {
             if ($buttonId === 'register_yes') {
                 $participant = Participant::create([
@@ -251,13 +250,10 @@ class ParticipantService
             return $this->sendNotRegisteredMessage($phoneNumber, $senderName);
         }
 
-        // 🔹 Fluxo do cadastro
         switch ($participant->step_register) {
             case 1:
-                // Perguntou o nome completo
-                if ($buttonId === null && $textMessage) {
-                    // Armazena temporariamente o nome completo para confirmação
-                    $participant->full_name = $textMessage;
+                if ($buttonId === null && trim($textMessage) !== '') {
+                    $participant->full_name = trim($textMessage);
                     $participant->save();
 
                     $buttons = [
@@ -272,7 +268,6 @@ class ParticipantService
                     );
                 }
 
-                // Se clicou SIM → confirma nome e segue
                 if ($buttonId === 'confirm_name_yes') {
                     $fullName = trim($participant->full_name);
                     $firstName = explode(' ', $fullName)[0] ?? '';
@@ -281,51 +276,56 @@ class ParticipantService
                     $participant->step_register = 2;
                     $participant->save();
 
-                    return $this->sendTextMessage(
-                        $phoneNumber,
-                        "Perfeito, *{$firstName}*! Agora me informe o seu *CEP* 🏠"
-                    );
+                    return $this->sendTextMessage($phoneNumber, "Perfeito, *{$firstName}*! Agora me informe o seu *CEP* 🏠");
                 }
 
-                // Se clicou NÃO → repete a pergunta
                 if ($buttonId === 'confirm_name_no') {
                     $participant->full_name = null;
                     $participant->save();
 
-                    return $this->sendTextMessage(
-                        $phoneNumber,
-                        "Sem problemas! Me diga novamente o seu *nome completo* 😊"
-                    );
+                    return $this->sendTextMessage($phoneNumber, "Sem problemas! Me diga novamente o seu *nome completo* 😊");
                 }
 
                 break;
 
             case 2:
-                $participant->cep = $textMessage;
+                if (trim($textMessage) === '') {
+                    return $this->sendTextMessage($phoneNumber, "Por favor, informe seu *CEP*, *{$participant->first_name}*.");
+                }
+
+                $participant->cep = trim($textMessage);
                 $participant->step_register = 3;
                 $participant->save();
 
                 return $this->sendTextMessage($phoneNumber, "Obrigado, *{$participant->first_name}*! Qual é o seu *Estado*?");
 
             case 3:
-                $participant->state = $textMessage;
+                if (trim($textMessage) === '') {
+                    return $this->sendTextMessage($phoneNumber, "Digite o *Estado*, *{$participant->first_name}*.");
+                }
+
+                $participant->state = trim($textMessage);
                 $participant->step_register = 4;
                 $participant->save();
 
-                return $this->sendTextMessage($phoneNumber, "Beleza, *{$participant->first_name}*! Agora digite a sua *Cidade*");
+                return $this->sendTextMessage($phoneNumber, "Beleza, *{$participant->first_name}*! Agora digite a sua *Cidade*.");
 
             case 4:
-                $participant->neighborhood = $textMessage;
+                if (trim($textMessage) === '') {
+                    return $this->sendTextMessage($phoneNumber, "Informe o *Bairro*, *{$participant->first_name}*.");
+                }
+
+                $participant->neighborhood = trim($textMessage);
                 $participant->step_register = 5;
                 $participant->save();
 
-                return $this->sendTextMessage($phoneNumber, "Certo, *{$participant->first_name}*! Agora preciso do seu *CPF* (apenas números)");
+                return $this->sendTextMessage($phoneNumber, "Certo, *{$participant->first_name}*! Agora preciso do seu *CPF* (apenas números).");
 
             case 5:
                 $cpf = preg_replace('/\D/', '', $textMessage);
 
-                if (!$this->isValidCPF($cpf)) {
-                    return $this->sendTextMessage($phoneNumber, "❌ CPF inválido. Por favor, informe um CPF válido, *{$participant->first_name}*.");
+                if (strlen($cpf) !== 11 || !$this->isValidCPF($cpf)) {
+                    return $this->sendTextMessage($phoneNumber, "❌ CPF inválido. Informe um CPF válido, *{$participant->first_name}*.");
                 }
 
                 $participant->cpf = $cpf;
@@ -365,31 +365,24 @@ class ParticipantService
         return response()->json(['status' => 'awaiting register']);
     }
 
-
-    protected function saveName(Participant $participant, $fullName)
-    {
-        $participant->first_name = trim($fullName);
-        $participant->save();
-    }
-
     protected function isValidCPF($cpf)
     {
-        // CPF precisa ter 11 dígitos
+        $cpf = preg_replace('/\D/', '', $cpf);
         if (strlen($cpf) != 11 || preg_match('/(\d)\1{10}/', $cpf)) {
             return false;
         }
 
-        // Validação dos dígitos verificadores
         for ($t = 9; $t < 11; $t++) {
             $d = 0;
             for ($c = 0; $c < $t; $c++) {
                 $d += $cpf[$c] * (($t + 1) - $c);
             }
-            $d = ((10 * $d) % 11) % 10;
-            if ($cpf[$c] != $d) {
+            $digito = ((10 * $d) % 11) % 10;
+            if ($cpf[$t] != $digito) {
                 return false;
             }
         }
+
         return true;
     }
 }

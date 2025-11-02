@@ -38,7 +38,10 @@ class WebhookController extends Controller
         $participant = Participant::where('phone', $phoneNumber)->first();
 
         if ($participant) {
-            $participant->update(['last_message_at' => now()]);
+            $participant->update([
+                'last_message_at' => now(),
+                'is_active' => true, // Reativa o fluxo automaticamente
+            ]);
         }
 
         Log::info('passou allowedPhones', ['phone' => $phoneNumber]);

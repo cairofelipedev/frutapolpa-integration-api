@@ -22,17 +22,17 @@ class SendConversationClosureMessage extends Command
     public function handle()
     {
         $inactiveParticipants = Participant::whereNotNull('last_message_at')
-            ->where('step_register', '!=', 0) // só quem não finalizou o registro
+            ->where('is_active', true) // apenas fluxos ativos
             ->where('last_message_at', '<', now()->subMinute())
             ->get();
 
         foreach ($inactiveParticipants as $participant) {
             $this->whatsAppService->sendTextMessage(
                 $participant->phone,
-                "Vamos encerrar nossa conversa por enquanto. Caso queira continuar, é só mandar uma nova mensagem 🍓"
+                "🍓 Vamos encerrar nossa conversa por enquanto. Caso queira continuar, é só mandar uma nova mensagem!"
             );
 
-            // Marca como encerrado
+            $participant->is_active = false; // marca como encerrado
             $participant->step_register = 0;
             $participant->save();
         }

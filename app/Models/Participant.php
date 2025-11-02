@@ -20,7 +20,8 @@ class Participant extends Model
         'city',
         'step_register',
         'full_name',
-        'last_message_at'
+        'last_message_at',
+        'is_active'
     ];
 
     public function coupons()
