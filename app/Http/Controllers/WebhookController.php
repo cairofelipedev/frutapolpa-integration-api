@@ -17,7 +17,7 @@ class WebhookController extends Controller
     }
 
     protected $allowedPhones = [
-        '558681931714',
+        '558699939604',
         '558699598080',
     ];
 
