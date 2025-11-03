@@ -23,7 +23,7 @@ class SendConversationClosureMessage extends Command
     {
         $inactiveParticipants = Participant::whereNotNull('last_message_at')
             ->where('is_active', true) // apenas fluxos ativos
-            ->where('last_message_at', '<', now()->subMinute())
+            ->where('last_message_at', '<', now()->subMinutes(30))
             ->get();
 
         foreach ($inactiveParticipants as $participant) {
