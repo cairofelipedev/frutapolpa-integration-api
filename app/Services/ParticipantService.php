@@ -158,7 +158,7 @@ class ParticipantService
 
         return $this->whatsAppService->sendButtonListMessage(
             $phoneNumber,
-            "🍓 Olá, *{$firstName}!* 👋\nBem-vindo novamente à *Polpa Premiada 2025*! 🎉\n\nO que você deseja fazer?",
+            "🍓 Olá, *{$firstName}!* 👋\nBem-vindo novamente à *Apcef*! 🎉\n\nO que você deseja fazer?",
             $buttons
         );
     }

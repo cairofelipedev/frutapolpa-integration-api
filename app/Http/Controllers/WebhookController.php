@@ -16,10 +16,11 @@ class WebhookController extends Controller
         $this->participantService = $participantService;
     }
 
-    // protected $allowedPhones = [
-    //     '558699939604',
-    //     '558699598080',
-    // ];
+    protected $allowedPhones = [
+        '558699939604',
+        '558699598080',
+        '558699206955',
+    ];
 
     public function handleCallback(Request $request)
     {
@@ -29,10 +30,10 @@ class WebhookController extends Controller
         $phoneNumber = $data['phone'] ?? null;
         $senderName = $data['senderName'] ?? null;
 
-        // if (!in_array($phoneNumber, $this->allowedPhones)) {
-        //     Log::warning("Número não autorizado: {$phoneNumber}");
-        //     return response()->json(['status' => 'ignored']);
-        // }
+        if (!in_array($phoneNumber, $this->allowedPhones)) {
+            Log::warning("Número não autorizado: {$phoneNumber}");
+            return response()->json(['status' => 'ignored']);
+        }
 
 
         $participant = Participant::where('phone', $phoneNumber)->first();
