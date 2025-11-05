@@ -9,8 +9,7 @@ class MessageHelper
         $greetings = [
             "Oi {$name}, tudo bem?",
             "Olá {$name}, espero que esteja bem.",
-            "E aí {$name}, como vai?",
-            "Bom te ver por aqui, {$name}.",
+            "Oi {$name}, como vai?",
             "Oi {$name}, tudo certo por aí?",
             "Fala {$name}, tudo tranquilo?",
         ];
@@ -149,5 +148,20 @@ class MessageHelper
         ];
 
         return $variants[array_rand($variants)];
+    }
+
+    public static function getNotRegisteredMessages($firstName)
+    {
+        return [
+            "Olá {$firstName}, tudo bem?\n\nVocê está participando da *Polpa Premiada 2025* da *Fruta Polpa*.\nQuer iniciar seu cadastro para concorrer a uma *Moto 0 km*?",
+
+            "Oi {$firstName}! Aqui é a equipe da *Fruta Polpa*.\nEstamos com a promoção *Polpa Premiada 2025* e você pode ganhar uma *Moto 0 km*.\nDeseja começar seu cadastro agora?",
+
+            "Olá {$firstName}!\nA *Fruta Polpa* está realizando a *Polpa Premiada 2025*.\nQuer participar e ter a chance de ganhar uma *Moto 0 km*?",
+
+            "Tudo bem, {$firstName}?\nVocê foi convidado para participar da *Polpa Premiada 2025* da *Fruta Polpa*.\nGostaria de iniciar seu cadastro para concorrer a uma *Moto 0 km*?",
+
+            "Oi {$firstName}!\nA promoção *Polpa Premiada 2025* da *Fruta Polpa* já começou.\nQuer fazer seu cadastro e participar do sorteio de uma *Moto 0 km*?"
+        ];
     }
 }

@@ -168,7 +168,8 @@ class ParticipantService
     {
         $firstName = $senderName ? explode(' ', trim($senderName))[0] : 'participante';
 
-        $message = "🍓 *Olá, {$firstName}!* 🎉\n\nBem-vindo à *Polpa Premiada 2025, da Fruta Polpa!* 🎁\n\nVocê está a um passo de concorrer a uma *Moto 0 km* 🚀 com a *Melhor polpa de frutas do Brasil*! 😍\n\n👉 Gostaria de iniciar seu cadastro?";
+        $messages = MessageHelper::getNotRegisteredMessages($firstName);
+        $message = $messages[array_rand($messages)];
 
         $buttons = [
             ['id' => 'register_yes', 'label' => 'SIM'],
