@@ -19,19 +19,125 @@ class ParticipantService
 
     public function handleParticipantMessage(Participant $participant, $phoneNumber, $textMessage, $buttonId, $mediaUrl = null)
     {
-        if ($buttonId) {
-            return $this->handleButtonMessage($participant, $phoneNumber, $buttonId);
-        }
-
+        // Caso envie imagem no passo do comprovante
         if ($mediaUrl && $participant->step === 3) {
-            return $this->handleImageSubmission($participant, $phoneNumber, $mediaUrl);
+            return $this->handleRacePaymentProof($participant, $phoneNumber, $mediaUrl);
         }
 
+        // Caso pressione algum botão (SIM / NÃO)
+        if ($buttonId) {
+            return $this->handleRaceButton($participant, $phoneNumber, $buttonId);
+        }
+
+        // Caso envie texto em etapas intermediárias (normalmente não usado aqui)
         if ($textMessage) {
-            return $this->handleTextMessage($participant, $phoneNumber, $textMessage);
+            return $this->handleRaceText($participant, $phoneNumber, $textMessage);
         }
 
         return response()->json(['status' => 'ignored']);
+    }
+
+    /**
+     * Trata os botões do fluxo da corrida (saúde / atendimento especial)
+     */
+    protected function handleRaceButton(Participant $participant, $phoneNumber, $buttonId)
+    {
+        // === STEP 1: PERGUNTA SOBRE ATESTADO MÉDICO ===
+        if ($participant->step === 0 && $buttonId === 'start_race_register') {
+            $participant->step = 1;
+            $participant->save();
+
+            $buttons = [
+                ['id' => 'health_yes', 'label' => 'SIM'],
+                ['id' => 'health_no', 'label' => 'NÃO'],
+            ];
+
+            return $this->whatsAppService->sendButtonListMessage(
+                $phoneNumber,
+                "🏃‍♀️ Antes de prosseguir, confirme:\n\nVocê possui *atestado médico válido* para participação na corrida?",
+                $buttons
+            );
+        }
+
+        // === STEP 2: CONFIRMA ATESTADO MÉDICO ===
+        if ($participant->step === 1) {
+            if ($buttonId === 'health_yes') {
+                $participant->has_medical_certificate = true;
+            } elseif ($buttonId === 'health_no') {
+                $participant->has_medical_certificate = false;
+            }
+
+            $participant->step = 2;
+            $participant->save();
+
+            $buttons = [
+                ['id' => 'assist_yes', 'label' => 'SIM'],
+                ['id' => 'assist_no', 'label' => 'NÃO'],
+            ];
+
+            return $this->whatsAppService->sendButtonListMessage(
+                $phoneNumber,
+                "Perfeito! 😊\nVocê necessita de *algum atendimento especial* durante a corrida?",
+                $buttons
+            );
+        }
+
+        // === STEP 3: CONFIRMA ATENDIMENTO ESPECIAL ===
+        if ($participant->step === 2) {
+            if ($buttonId === 'assist_yes') {
+                $participant->needs_special_assistance = true;
+            } elseif ($buttonId === 'assist_no') {
+                $participant->needs_special_assistance = false;
+            }
+
+            $participant->step = 3;
+            $participant->save();
+
+            // Manda instruções de pagamento
+            $pixKey = '91b0e329-1e5e-4dfb-8355-0e0b0cc18f45'; // chave aleatória PIX (substituir pela real)
+            $message = "🧾 Para concluir sua inscrição na *Corrida FENAE 2025*, envie o comprovante de pagamento.\n\n💰 *Valor:* R$ 90,00\n🏦 *PIX (chave aleatória):* {$pixKey}\n\nApós o pagamento, *envie a imagem do comprovante aqui mesmo* 📸";
+
+            return $this->sendTextMessage($phoneNumber, $message);
+        }
+
+        return $this->sendTextMessage($phoneNumber, "Por favor, siga as etapas na ordem correta 🏃‍♂️");
+    }
+
+    /**
+     * Recebe e salva o comprovante de pagamento da corrida
+     */
+    protected function handleRacePaymentProof(Participant $participant, $phoneNumber, $mediaUrl)
+    {
+        $participant->payment_proof_url = $mediaUrl;
+        $participant->step = 0;
+        $participant->save();
+
+        $this->sendTextMessage(
+            $phoneNumber,
+            "✅ Comprovante recebido com sucesso, *{$participant->first_name}*! 🎉\n\nSua inscrição será confirmada após a verificação do pagamento.\n\nObrigado por participar da *Corrida FENAE 2025*! 🏁"
+        );
+
+        return response()->json(['status' => 'payment proof received']);
+    }
+
+    /**
+     * Caso algum texto seja enviado (tratamento adicional)
+     */
+    protected function handleRaceText(Participant $participant, $phoneNumber, $textMessage)
+    {
+        // Caso o participante envie algo fora da etapa esperada
+        if ($participant->step < 3) {
+            return $this->sendTextMessage(
+                $phoneNumber,
+                "Por favor, responda usando os botões, *{$participant->first_name}* 😊"
+            );
+        }
+
+        // Caso envie texto no passo do comprovante
+        return $this->sendTextMessage(
+            $phoneNumber,
+            "Envie o *comprovante de pagamento (imagem)* para continuar 📸"
+        );
     }
 
     protected function handleButtonMessage(Participant $participant, $phoneNumber, $buttonId)
@@ -223,7 +329,7 @@ class ParticipantService
 
         return $code;
     }
-    
+
     // =================================================================================================================================
     // FUNÇÕES AUXILIARES PARA O NOVO FLUXO DE CORRIDA (ADICIONADAS PARA SUPORTAR A LÓGICA DE CATEGORIA)
     // =================================================================================================================================
@@ -242,17 +348,31 @@ class ParticipantService
         ];
         return $map[$cat_base][$percurso] ?? [];
     }
-    
+
     protected function getCategoriaDescription($code)
     {
         $descriptions = [
-            'A' => 'Público Geral 15-17 (5 km)', 'B' => 'Público Geral 18-29 (5 km)', 'C' => 'Público Geral 30-39 (5 km)',
-            'D' => 'Público Geral 40-49 (5 km)', 'E' => 'Público Geral 50-59 (5 km)', 'F' => 'Público Geral 60-69 (5 km)',
-            'G' => 'Público Geral 70+ (5 km)', 'H' => 'Público Geral 18-29 (10 km)', 'I' => 'Público Geral 30-39 (10 km)',
-            'J' => 'Público Geral 40-49 (10 km)', 'K' => 'Público Geral 50-59 (10 km)', 'L' => 'Público Geral 60-69 (10 km)',
-            'M' => 'Público Geral 70+ (10 km)', 'N' => 'Sócio Efetivo 18-39 (5 km)', 'O' => 'Sócio Efetivo 40-50 (5 km)',
-            'P' => 'Sócio Efetivo 51-60 (5 km)', 'Q' => 'Sócio Efetivo 61+ (5 km)', 'R' => 'Sócio Efetivo 18-39 (10 km)',
-            'S' => 'Sócio Efetivo 40-50 (10 km)', 'T' => 'Sócio Efetivo 51-60 (10 km)', 'U' => 'Sócio Efetivo 61+ (10 km)',
+            'A' => 'Público Geral 15-17 (5 km)',
+            'B' => 'Público Geral 18-29 (5 km)',
+            'C' => 'Público Geral 30-39 (5 km)',
+            'D' => 'Público Geral 40-49 (5 km)',
+            'E' => 'Público Geral 50-59 (5 km)',
+            'F' => 'Público Geral 60-69 (5 km)',
+            'G' => 'Público Geral 70+ (5 km)',
+            'H' => 'Público Geral 18-29 (10 km)',
+            'I' => 'Público Geral 30-39 (10 km)',
+            'J' => 'Público Geral 40-49 (10 km)',
+            'K' => 'Público Geral 50-59 (10 km)',
+            'L' => 'Público Geral 60-69 (10 km)',
+            'M' => 'Público Geral 70+ (10 km)',
+            'N' => 'Sócio Efetivo 18-39 (5 km)',
+            'O' => 'Sócio Efetivo 40-50 (5 km)',
+            'P' => 'Sócio Efetivo 51-60 (5 km)',
+            'Q' => 'Sócio Efetivo 61+ (5 km)',
+            'R' => 'Sócio Efetivo 18-39 (10 km)',
+            'S' => 'Sócio Efetivo 40-50 (10 km)',
+            'T' => 'Sócio Efetivo 51-60 (10 km)',
+            'U' => 'Sócio Efetivo 61+ (10 km)',
             'V' => 'PCD (5 km)',
         ];
         return $descriptions[$code] ?? 'Categoria Desconhecida';
@@ -347,7 +467,7 @@ class ParticipantService
                     ['id' => 'cat_socio', 'label' => 'Sócio Efetivo (Caixa)'],
                     ['id' => 'cat_pcd', 'label' => 'PCD (Pessoa com Deficiência)'],
                 ];
-                
+
                 return $this->whatsAppService->sendButtonListMessage(
                     $phoneNumber,
                     "Obrigado, *{$participant->first_name}*! Agora, em qual destas categorias você se enquadra?",
@@ -357,20 +477,20 @@ class ParticipantService
             case 3:
                 // NOVO PASSO 6: Processa a Categoria Base
                 $firstName = $participant->first_name;
-                
+
                 // FLUXO RÁPIDO PCD (Define Categoria V)
                 if ($buttonId === 'cat_pcd') {
-                    $participant->categoria = 'V'; 
+                    $participant->categoria = 'V';
                     $participant->step_register = 6; // PULA PARA CEP (antigo case 2)
                     $participant->save();
-                    
+
                     return $this->sendTextMessage($phoneNumber, "Ótimo! Sua categoria foi definida como *PCD (5 km)*. Vamos para os dados pessoais. Agora, qual o seu **CEP** 🏠");
                 }
-                
+
                 // FLUXO NORMAL (Geral ou Sócio) -> Pede Percurso
                 if (in_array($buttonId, ['cat_geral', 'cat_socio'])) {
-                    
-                    $participant->temp_cat_base = $buttonId; 
+
+                    $participant->temp_cat_base = $buttonId;
                     $participant->step_register = 4; // AVANÇA PARA PERCURSO
                     $participant->save();
 
@@ -378,16 +498,16 @@ class ParticipantService
                         ['id' => 'percurso_5km', 'label' => '5 km'],
                         ['id' => 'percurso_10km', 'label' => '10 km'],
                     ];
-                    
+
                     return $this->whatsAppService->sendButtonListMessage(
                         $phoneNumber,
                         "Ótimo! Registrado. Agora, me informe qual o tamanho do percurso que deseja concorrer:",
                         $buttons
                     );
                 }
-                
+
                 return $this->sendTextMessage($phoneNumber, "Por favor, escolha uma das categorias usando os botões.");
-                
+
             case 4:
                 // NOVO PASSO 7: Recebe o Percurso e Pede a Faixa Etária
                 $percurso = null;
@@ -396,11 +516,11 @@ class ParticipantService
                 } elseif ($buttonId === 'percurso_10km') {
                     $percurso = '10 km';
                 }
-                
+
                 if ($percurso) {
                     $cat_base = $participant->temp_cat_base;
                     $faixas = $this->getFaixasEtarias($cat_base, $percurso);
-                    
+
                     $participant->temp_percurso = $percurso;
                     $participant->step_register = 5; // AVANÇA PARA FAIXA ETÁRIA
                     $participant->save();
@@ -411,23 +531,23 @@ class ParticipantService
                         $faixas
                     );
                 }
-                
+
                 return $this->sendTextMessage($phoneNumber, "Por favor, escolha uma opção de percurso usando os botões (5 km ou 10 km).");
 
             case 5:
                 // NOVO PASSO 8: Recebe a Faixa Etária e Finaliza a Categoria
                 $categoria_final = $buttonId;
-                
+
                 // Salva a Categoria Final
                 $participant->categoria = $categoria_final;
                 $participant->temp_cat_base = null;
                 $participant->temp_percurso = null;
-                
+
                 $participant->step_register = 6; // AVANÇA PARA CEP (início dos campos pessoais)
                 $participant->save();
-                
+
                 $categoria_desc = $this->getCategoriaDescription($categoria_final);
-                
+
                 return $this->sendTextMessage($phoneNumber, "Excelente! Sua categoria (*{$categoria_desc}*) foi definida. Vamos para os dados pessoais. Qual o seu **CEP** 🏠");
 
             case 6:
