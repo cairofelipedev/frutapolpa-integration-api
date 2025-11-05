@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Helpers\MessageHelper;
 use App\Models\Participant;
 use App\Models\Coupon;
 use App\Jobs\SendWhatsAppMessage;
@@ -227,6 +228,7 @@ class ParticipantService
     {
         $participant = Participant::where('phone', $phoneNumber)->first();
 
+        // === 1️⃣ PARTICIPANTE AINDA NÃO EXISTE ===
         if (!$participant) {
             if ($buttonId === 'register_yes') {
                 $participant = Participant::create([
@@ -236,21 +238,23 @@ class ParticipantService
 
                 return $this->sendTextMessage(
                     $phoneNumber,
-                    "Ótimo! Vamos começar seu cadastro 🎉\nQual o seu *nome completo*?"
+                    MessageHelper::registrationStart()
                 );
             }
 
             if ($buttonId === 'register_no') {
                 return $this->sendTextMessage(
                     $phoneNumber,
-                    "Tudo bem! Caso queira participar depois, é só mandar uma mensagem por aqui 🍓"
+                    MessageHelper::registrationLater()
                 );
             }
 
             return $this->sendNotRegisteredMessage($phoneNumber, $senderName);
         }
 
+        // === 2️⃣ PARTICIPANTE EXISTENTE ===
         switch ($participant->step_register) {
+            // ===== ETAPA 1: NOME COMPLETO =====
             case 1:
                 if ($buttonId === null && trim($textMessage) !== '') {
                     $participant->full_name = trim($textMessage);
@@ -263,7 +267,7 @@ class ParticipantService
 
                     return $this->whatsAppService->sendButtonListMessage(
                         $phoneNumber,
-                        "Confirme, este é seu nome completo?",
+                        MessageHelper::confirmNamePrompt(),
                         $buttons
                     );
                 }
@@ -276,56 +280,87 @@ class ParticipantService
                     $participant->step_register = 2;
                     $participant->save();
 
-                    return $this->sendTextMessage($phoneNumber, "Perfeito, *{$firstName}*! Agora me informe o seu *CEP* 🏠");
+                    return $this->sendTextMessage(
+                        $phoneNumber,
+                        MessageHelper::askForCep($firstName)
+                    );
                 }
 
                 if ($buttonId === 'confirm_name_no') {
                     $participant->full_name = null;
                     $participant->save();
 
-                    return $this->sendTextMessage($phoneNumber, "Sem problemas! Me diga novamente o seu *nome completo* 😊");
+                    return $this->sendTextMessage(
+                        $phoneNumber,
+                        "Sem problemas. Me diga novamente o seu nome completo."
+                    );
                 }
 
                 break;
 
+            // ===== ETAPA 2: CEP =====
             case 2:
                 if (trim($textMessage) === '') {
-                    return $this->sendTextMessage($phoneNumber, "Por favor, informe seu *CEP*, *{$participant->first_name}*.");
+                    return $this->sendTextMessage(
+                        $phoneNumber,
+                        "Por favor, informe seu CEP, {$participant->first_name}."
+                    );
                 }
 
                 $participant->cep = trim($textMessage);
                 $participant->step_register = 3;
                 $participant->save();
 
-                return $this->sendTextMessage($phoneNumber, "Obrigado, *{$participant->first_name}*! Qual é o seu *Estado*?");
+                return $this->sendTextMessage(
+                    $phoneNumber,
+                    MessageHelper::askForState($participant->first_name)
+                );
 
+                // ===== ETAPA 3: ESTADO =====
             case 3:
                 if (trim($textMessage) === '') {
-                    return $this->sendTextMessage($phoneNumber, "Digite o *Estado*, *{$participant->first_name}*.");
+                    return $this->sendTextMessage(
+                        $phoneNumber,
+                        "Digite o Estado, {$participant->first_name}."
+                    );
                 }
 
                 $participant->state = trim($textMessage);
                 $participant->step_register = 4;
                 $participant->save();
 
-                return $this->sendTextMessage($phoneNumber, "Beleza, *{$participant->first_name}*! Agora digite a sua *Cidade*.");
+                return $this->sendTextMessage(
+                    $phoneNumber,
+                    MessageHelper::askForCity($participant->first_name)
+                );
 
+                // ===== ETAPA 4: CIDADE =====
             case 4:
                 if (trim($textMessage) === '') {
-                    return $this->sendTextMessage($phoneNumber, "Informe o *Bairro*, *{$participant->first_name}*.");
+                    return $this->sendTextMessage(
+                        $phoneNumber,
+                        MessageHelper::askForNeighborhood($participant->first_name)
+                    );
                 }
 
                 $participant->neighborhood = trim($textMessage);
                 $participant->step_register = 5;
                 $participant->save();
 
-                return $this->sendTextMessage($phoneNumber, "Certo, *{$participant->first_name}*! Agora preciso do seu *CPF* (apenas números).");
+                return $this->sendTextMessage(
+                    $phoneNumber,
+                    MessageHelper::askForCpf($participant->first_name)
+                );
 
+                // ===== ETAPA 5: CPF =====
             case 5:
                 $cpf = preg_replace('/\D/', '', $textMessage);
 
                 if (strlen($cpf) !== 11 || !$this->isValidCPF($cpf)) {
-                    return $this->sendTextMessage($phoneNumber, "❌ CPF inválido. Informe um CPF válido, *{$participant->first_name}*.");
+                    return $this->sendTextMessage(
+                        $phoneNumber,
+                        MessageHelper::invalidCpf($participant->first_name)
+                    );
                 }
 
                 $participant->cpf = $cpf;
@@ -339,16 +374,21 @@ class ParticipantService
 
                 return $this->whatsAppService->sendButtonListMessage(
                     $phoneNumber,
-                    "📜 {$participant->first_name}, para finalizar seu cadastro, você autoriza o uso dos seus dados conforme a LGPD?",
+                    MessageHelper::askPrivacy($participant->first_name),
                     $buttons
                 );
 
+                // ===== ETAPA 6: LGPD =====
             case 6:
                 if ($buttonId === 'privacy_yes') {
                     $participant->step_register = 0;
                     $participant->save();
 
-                    $this->sendTextMessage($phoneNumber, "🎉 Cadastro concluído com sucesso, *{$participant->first_name}*! Agora você já pode cadastrar seus cupons.");
+                    $this->sendTextMessage(
+                        $phoneNumber,
+                        MessageHelper::registrationComplete($participant->first_name)
+                    );
+
                     return $this->sendInitialOptions($phoneNumber);
                 }
 
@@ -356,14 +396,21 @@ class ParticipantService
                     $participant->step_register = 0;
                     $participant->save();
 
-                    return $this->sendTextMessage($phoneNumber, "😢 Tudo bem, *{$participant->first_name}*! Sem aceitar a política de privacidade não é possível participar da promoção.");
+                    return $this->sendTextMessage(
+                        $phoneNumber,
+                        MessageHelper::registrationDenied($participant->first_name)
+                    );
                 }
 
-                return $this->sendTextMessage($phoneNumber, "Por favor, escolha uma opção: SIM ou NÃO, *{$participant->first_name}*.");
+                return $this->sendTextMessage(
+                    $phoneNumber,
+                    "Por favor, escolha uma opção: SIM ou NÃO, {$participant->first_name}."
+                );
         }
 
         return response()->json(['status' => 'awaiting register']);
     }
+
 
     protected function isValidCPF($cpf)
     {

@@ -40,6 +40,7 @@ class WhatsAppService
             'phone' => $phone,
             'message' => $message,
             'buttonList' => ['buttons' => $buttons],
+            'delayTyping' => 3
         ];
 
         $response = Http::withHeaders($this->getHeaders())->post($url, $body);
