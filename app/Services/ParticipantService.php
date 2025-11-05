@@ -19,234 +19,68 @@ class ParticipantService
 
     public function handleParticipantMessage(Participant $participant, $phoneNumber, $textMessage, $buttonId, $mediaUrl = null)
     {
-        // Caso envie imagem no passo do comprovante
-        if ($mediaUrl && $participant->step === 3) {
-            return $this->handleRacePaymentProof($participant, $phoneNumber, $mediaUrl);
-        }
-
-        // Caso pressione algum botão (SIM / NÃO)
         if ($buttonId) {
-            return $this->handleRaceButton($participant, $phoneNumber, $buttonId);
+            return $this->handleButtonMessage($participant, $phoneNumber, $buttonId);
         }
 
-        // Caso envie texto em etapas intermediárias (normalmente não usado aqui)
+        if ($mediaUrl && $participant->step === 2) {
+            return $this->handleImageSubmission($participant, $phoneNumber, $mediaUrl);
+        }
+
         if ($textMessage) {
-            return $this->handleRaceText($participant, $phoneNumber, $textMessage);
+            return $this->handleTextMessage($participant, $phoneNumber, $textMessage);
         }
 
         return response()->json(['status' => 'ignored']);
     }
 
-    /**
-     * Trata os botões do fluxo da corrida (saúde / atendimento especial)
-     */
-    protected function handleRaceButton(Participant $participant, $phoneNumber, $buttonId)
+    protected function handleButtonMessage(Participant $participant, $phoneNumber, $buttonId)
     {
-        // === STEP 1: PERGUNTA SOBRE ATESTADO MÉDICO ===
-        if ($participant->step === 0 && $buttonId === 'start_race_register') {
+        // 👉 Novo fluxo da corrida
+        if ($buttonId === 'acompanhar_inscricao') {
             $participant->step = 1;
             $participant->save();
 
-            $buttons = [
-                ['id' => 'health_yes', 'label' => 'SIM'],
-                ['id' => 'health_no', 'label' => 'NÃO'],
-            ];
-
-            return $this->whatsAppService->sendButtonListMessage(
+            $this->whatsAppService->sendImageMessage(
                 $phoneNumber,
-                "🏃‍♀️ Antes de prosseguir, confirme:\n\nVocê possui *atestado médico válido* para participação na corrida?",
-                $buttons
+                "https://frutapolpa.365chats.com/cupom.jpeg", // substitua pelo link da imagem do QR Code PIX
+                "🏃‍♀️ *Inscrição na Corrida APCEF 2025*\n\nO valor da inscrição é de *R$ 90,00*.\n\nEnvie o comprovante de pagamento para o *PIX*: `apcef@gmail.com` 💳\n\nAssim que realizar o pagamento, envie aqui a *imagem do comprovante* para concluirmos sua inscrição."
             );
-        }
-
-        // === STEP 2: CONFIRMA ATESTADO MÉDICO ===
-        if ($participant->step === 1) {
-            if ($buttonId === 'health_yes') {
-                $participant->has_medical_certificate = true;
-            } elseif ($buttonId === 'health_no') {
-                $participant->has_medical_certificate = false;
-            }
 
             $participant->step = 2;
             $participant->save();
 
-            $buttons = [
-                ['id' => 'assist_yes', 'label' => 'SIM'],
-                ['id' => 'assist_no', 'label' => 'NÃO'],
-            ];
-
-            return $this->whatsAppService->sendButtonListMessage(
-                $phoneNumber,
-                "Perfeito! 😊\nVocê necessita de *algum atendimento especial* durante a corrida?",
-                $buttons
-            );
-        }
-
-        // === STEP 3: CONFIRMA ATENDIMENTO ESPECIAL ===
-        if ($participant->step === 2) {
-            if ($buttonId === 'assist_yes') {
-                $participant->needs_special_assistance = true;
-            } elseif ($buttonId === 'assist_no') {
-                $participant->needs_special_assistance = false;
-            }
-
-            $participant->step = 3;
-            $participant->save();
-
-            // Manda instruções de pagamento
-            $pixKey = '91b0e329-1e5e-4dfb-8355-0e0b0cc18f45'; // chave aleatória PIX (substituir pela real)
-            $message = "🧾 Para concluir sua inscrição na *Corrida FENAE 2025*, envie o comprovante de pagamento.\n\n💰 *Valor:* R$ 90,00\n🏦 *PIX (chave aleatória):* {$pixKey}\n\nApós o pagamento, *envie a imagem do comprovante aqui mesmo* 📸";
-
-            return $this->sendTextMessage($phoneNumber, $message);
-        }
-
-        return $this->sendTextMessage($phoneNumber, "Por favor, siga as etapas na ordem correta 🏃‍♂️");
-    }
-
-    /**
-     * Recebe e salva o comprovante de pagamento da corrida
-     */
-    protected function handleRacePaymentProof(Participant $participant, $phoneNumber, $mediaUrl)
-    {
-        $participant->payment_proof_url = $mediaUrl;
-        $participant->step = 0;
-        $participant->save();
-
-        $this->sendTextMessage(
-            $phoneNumber,
-            "✅ Comprovante recebido com sucesso, *{$participant->first_name}*! 🎉\n\nSua inscrição será confirmada após a verificação do pagamento.\n\nObrigado por participar da *Corrida FENAE 2025*! 🏁"
-        );
-
-        return response()->json(['status' => 'payment proof received']);
-    }
-
-    /**
-     * Caso algum texto seja enviado (tratamento adicional)
-     */
-    protected function handleRaceText(Participant $participant, $phoneNumber, $textMessage)
-    {
-        // Caso o participante envie algo fora da etapa esperada
-        if ($participant->step < 3) {
-            return $this->sendTextMessage(
-                $phoneNumber,
-                "Por favor, responda usando os botões, *{$participant->first_name}* 😊"
-            );
-        }
-
-        // Caso envie texto no passo do comprovante
-        return $this->sendTextMessage(
-            $phoneNumber,
-            "Envie o *comprovante de pagamento (imagem)* para continuar 📸"
-        );
-    }
-
-    protected function handleButtonMessage(Participant $participant, $phoneNumber, $buttonId)
-    {
-        if ($buttonId === 'cadastrar_cupom') {
-            $participant->step = 1;
-            $participant->save();
-
-            Coupon::create([
-                'participant_id' => $participant->id,
-                'image' => null,
-            ]);
-
-            return $this->sendPolpaOptions($phoneNumber);
-        }
-
-        if (in_array($buttonId, ['3', '6', '9', '12', '15'])) {
-            $quantity = is_numeric($buttonId) ? intval($buttonId) : 0;
-
-            $coupon = $participant->coupons()->latest()->first();
-            if ($coupon) {
-                $coupon->quantity = $quantity;
-                $coupon->save();
-
-                $this->generateCouponCodes($participant, $coupon, $quantity);
-
-                $participant->step = 3;
-                $participant->save();
-
-                $this->whatsAppService->sendImageMessage(
-                    $phoneNumber,
-                    "https://frutapolpa.365chats.com/cupom.jpeg",
-                    "Certo! Agora envie a foto do seu comprovante 📸\n\nCaso ele seja muito grande, você pode dobrá-lo, mas lembre-se: as informações da compra das polpas devem estar visíveis."
-                );
-
-                return $this->sendTextMessage($phoneNumber, "Estamos quase lá! Envie agora a foto do seu cupom fiscal para validar sua participação.");
-            }
+            return $this->sendTextMessage($phoneNumber, "Após o pagamento, envie a *foto do comprovante* aqui 📸");
         }
 
         return $this->sendInitialOptions($phoneNumber);
     }
 
+
+
     protected function handleTextMessage(Participant $participant, $phoneNumber, $textMessage)
     {
-        switch ($participant->step) {
-            case 4:
-                return $this->processCouponQuantity($participant, $phoneNumber, $textMessage);
-            default:
-                return $this->sendInitialOptions($phoneNumber);
-        }
+        // Nenhum texto esperado neste fluxo (somente imagem)
+        return $this->sendInitialOptions($phoneNumber);
     }
+
 
     protected function handleImageSubmission(Participant $participant, $phoneNumber, $mediaUrl)
     {
-        $coupon = $participant->coupons()->latest()->first();
-
-        if ($coupon) {
-            $coupon->image = $mediaUrl;
-            $coupon->save();
-
-            $codes = $coupon->codes()->pluck('code')->toArray();
-
-            if (!empty($codes)) {
-                $message = "Obrigado por participar, *{$participant->first_name}*! 🎉\n\nContinue comprando Fruta Polpa e aumente a sua sorte para o próximo sorteio. 🍓\n\nSeus *números da sorte* são:\n";
-                $message .= implode("\n", $codes);
-                $message .= "\n\n👉 Cadastre um novo cupom sempre que quiser para aumentar suas chances de ganhar!";
-            } else {
-                $message = "Imagem recebida, mas não encontramos os cupons gerados. Tente novamente ou fale com o suporte.";
-            }
-
-            $this->sendTextMessage($phoneNumber, $message);
-
-            $participant->step = 0;
-            $participant->save();
-
-            Log::info("Imagem salva no cupom ID: {$coupon->id}, participante: {$participant->id}");
-        } else {
-            Log::warning("Nenhum cupom encontrado para participante ID: {$participant->id}");
-            $this->sendTextMessage($phoneNumber, "Não encontramos um cupom ativo para salvar essa imagem. Tente novamente.");
-        }
-
-        return response()->json(['status' => 'image saved']);
-    }
-
-    protected function processCouponQuantity(Participant $participant, $phoneNumber, $quantity)
-    {
-        $quantity = intval($quantity);
-
-        $coupon = $participant->coupons()->latest()->first();
-
-        if (!$coupon) {
-            return $this->sendTextMessage($phoneNumber, "Erro: nenhum cupom ativo encontrado.");
-        }
-
-        $codes = $coupon->codes()->pluck('code')->toArray();
-
-        if (!empty($codes)) {
-            $message = "Perfeito, *{$participant->first_name}*! Estes são seus cupons da sorte:\n" . implode("\n", $codes);
-        } else {
-            $message = "Não encontramos cupons gerados. Tente novamente ou fale com o suporte.";
-        }
-
-        $this->sendTextMessage($phoneNumber, $message);
-
+        // Salvar o comprovante no campo image (se quiser)
         $participant->step = 0;
         $participant->save();
 
-        return response()->json(['status' => 'coupons sent', 'coupons' => $codes]);
+        $this->sendTextMessage(
+            $phoneNumber,
+            "✅ Obrigado, *{$participant->first_name}*! Recebemos o seu comprovante de pagamento.\n\nSua inscrição na *Corrida APCEF 2025* foi registrada com sucesso! 🏅\n\nEntraremos em contato caso seja necessário confirmar alguma informação."
+        );
+
+        Log::info("📎 Comprovante recebido de {$participant->first_name} ({$participant->phone}) - {$mediaUrl}");
+
+        return response()->json(['status' => 'payment proof received']);
     }
+
 
     protected function sendTextMessage($phoneNumber, $messageBody)
     {
@@ -259,12 +93,12 @@ class ParticipantService
         $firstName = $participant && $participant->first_name ? $participant->first_name : 'participante';
 
         $buttons = [
-            ['id' => 'cadastrar_cupom', 'label' => 'Cadastrar novo cupom'],
+            ['id' => 'acompanhar_inscricao', 'label' => 'Acompanhar inscrição 🏃‍♀️'],
         ];
 
         return $this->whatsAppService->sendButtonListMessage(
             $phoneNumber,
-            "🍓 Olá, *{$firstName}!* 👋\nBem-vindo novamente à *Apcef*! 🎉\n\nO que você deseja fazer?",
+            "🏃‍♂️ Olá, *{$firstName}!* 👋\nBem-vindo à *Corrida APCEF 2025*! 🏅\n\nO que você gostaria de fazer?",
             $buttons
         );
     }
@@ -273,12 +107,11 @@ class ParticipantService
     {
         $firstName = $senderName ? explode(' ', trim($senderName))[0] : 'participante';
 
-        // 1. PASSO (MENSAGEM INICIAL)
-        $message = "🍓 *Olá, {$firstName}!* 🎉\n\nBem-vindo à *XIV CORRIDA FENAE DO PESSOAL DA CAIXA 2025* 🎁\n\nVocê está a um passo de preencher sua ficha de inscrição!* 🚀  😍\n\n👉 Gostaria de iniciar seu cadastro?";
+        $message = "🏃‍♂️ *Olá, {$firstName}!* 🎉\n\nBem-vindo à *Corrida APCEF 2025*! 🏅\n\nParticipe dessa experiência incrível de esporte e bem-estar! 💪\n\nA inscrição tem o valor de *R$ 90,00*, e é necessário preencher alguns dados para continuar.\n\n👉 Deseja iniciar sua inscrição agora?";
 
         $buttons = [
-            ['id' => 'register_yes', 'label' => 'SIM'],
-            ['id' => 'register_no', 'label' => 'NÃO'],
+            ['id' => 'register_yes', 'label' => 'SIM, quero me inscrever'],
+            ['id' => 'register_no', 'label' => 'NÃO no momento'],
         ];
 
         return $this->whatsAppService->sendButtonListMessage($phoneNumber, $message, $buttons);
@@ -311,8 +144,8 @@ class ParticipantService
 
             CouponCode::create([
                 'participant_id' => $participant->id,
-                'coupon_id' => $coupon->id,
-                'code' => $code,
+                'coupon_id'      => $coupon->id,
+                'code'           => $code,
             ]);
 
             $generatedCoupons[] = $code;
@@ -330,62 +163,11 @@ class ParticipantService
         return $code;
     }
 
-    // =================================================================================================================================
-    // FUNÇÕES AUXILIARES PARA O NOVO FLUXO DE CORRIDA (ADICIONADAS PARA SUPORTAR A LÓGICA DE CATEGORIA)
-    // =================================================================================================================================
-
-    protected function getFaixasEtarias($cat_base, $percurso)
-    {
-        $map = [
-            'cat_geral' => [
-                '5 km' => [['id' => 'A', 'label' => '15 a 17 ANOS (Teen)'], ['id' => 'B', 'label' => '18 a 29 ANOS'], ['id' => 'C', 'label' => '30 a 39 ANOS'], ['id' => 'D', 'label' => '40 a 49 ANOS'], ['id' => 'E', 'label' => '50 a 59 ANOS'], ['id' => 'F', 'label' => '60 a 69 ANOS'], ['id' => 'G', 'label' => '70 OU MAIS']],
-                '10 km' => [['id' => 'H', 'label' => '18 a 29 ANOS'], ['id' => 'I', 'label' => '30 a 39 ANOS'], ['id' => 'J', 'label' => '40 a 49 ANOS'], ['id' => 'K', 'label' => '50 a 59 ANOS'], ['id' => 'L', 'label' => '60 a 69 ANOS'], ['id' => 'M', 'label' => '70 OU MAIS']],
-            ],
-            'cat_socio' => [
-                '5 km' => [['id' => 'N', 'label' => '18 a 39 ANOS'], ['id' => 'O', 'label' => '40 a 50 ANOS'], ['id' => 'P', 'label' => '51 a 60 ANOS'], ['id' => 'Q', 'label' => '61 OU MAIS']],
-                '10 km' => [['id' => 'R', 'label' => '18 a 39 ANOS'], ['id' => 'S', 'label' => '40 a 50 ANOS'], ['id' => 'T', 'label' => '51 a 60 ANOS'], ['id' => 'U', 'label' => '61 OU MAIS']],
-            ],
-        ];
-        return $map[$cat_base][$percurso] ?? [];
-    }
-
-    protected function getCategoriaDescription($code)
-    {
-        $descriptions = [
-            'A' => 'Público Geral 15-17 (5 km)',
-            'B' => 'Público Geral 18-29 (5 km)',
-            'C' => 'Público Geral 30-39 (5 km)',
-            'D' => 'Público Geral 40-49 (5 km)',
-            'E' => 'Público Geral 50-59 (5 km)',
-            'F' => 'Público Geral 60-69 (5 km)',
-            'G' => 'Público Geral 70+ (5 km)',
-            'H' => 'Público Geral 18-29 (10 km)',
-            'I' => 'Público Geral 30-39 (10 km)',
-            'J' => 'Público Geral 40-49 (10 km)',
-            'K' => 'Público Geral 50-59 (10 km)',
-            'L' => 'Público Geral 60-69 (10 km)',
-            'M' => 'Público Geral 70+ (10 km)',
-            'N' => 'Sócio Efetivo 18-39 (5 km)',
-            'O' => 'Sócio Efetivo 40-50 (5 km)',
-            'P' => 'Sócio Efetivo 51-60 (5 km)',
-            'Q' => 'Sócio Efetivo 61+ (5 km)',
-            'R' => 'Sócio Efetivo 18-39 (10 km)',
-            'S' => 'Sócio Efetivo 40-50 (10 km)',
-            'T' => 'Sócio Efetivo 51-60 (10 km)',
-            'U' => 'Sócio Efetivo 61+ (10 km)',
-            'V' => 'PCD (5 km)',
-        ];
-        return $descriptions[$code] ?? 'Categoria Desconhecida';
-    }
-
-    // =================================================================================================================================
-
     public function handleNewParticipantFlow($phoneNumber, $textMessage, $buttonId = null, $senderName = null)
     {
         $participant = Participant::where('phone', $phoneNumber)->first();
 
         if (!$participant) {
-            // 1. PASSO: Resposta ao botão SIM/NÃO da mensagem inicial
             if ($buttonId === 'register_yes') {
                 $participant = Participant::create([
                     'phone' => $phoneNumber,
@@ -410,7 +192,7 @@ class ParticipantService
 
         switch ($participant->step_register) {
             case 1:
-                // 2. PASSO: Recebe o Nome Completo E Pede Confirmação
+                // Recebe o nome completo
                 if ($buttonId === null && trim($textMessage) !== '') {
                     $participant->full_name = trim($textMessage);
                     $participant->save();
@@ -427,17 +209,15 @@ class ParticipantService
                     );
                 }
 
-                // 3. PASSO: Confirmação do Nome
                 if ($buttonId === 'confirm_name_yes') {
                     $fullName = trim($participant->full_name);
                     $firstName = explode(' ', $fullName)[0] ?? '';
 
                     $participant->first_name = $firstName;
-                    $participant->step_register = 2; // << NOVO PASSO: CPF
+                    $participant->step_register = 2;
                     $participant->save();
 
-                    // MENSAGEM ALTERADA PARA SOLICITAR CPF NOVO
-                    return $this->sendTextMessage($phoneNumber, "Perfeito, *{$firstName}*! Agora me informe o seu *CPF* (somente números) 😀");
+                    return $this->sendTextMessage($phoneNumber, "Perfeito, *{$firstName}*! Agora me informe o seu *CPF* (apenas números).");
                 }
 
                 if ($buttonId === 'confirm_name_no') {
@@ -447,149 +227,10 @@ class ParticipantService
                     return $this->sendTextMessage($phoneNumber, "Sem problemas! Me diga novamente o seu *nome completo* 😊");
                 }
 
-                return $this->sendTextMessage($phoneNumber, "Por favor, digite seu nome completo.");
+                break;
 
             case 2:
-                // NOVO PASSO 4: Recebe e Valida o CPF
-                $cpf = preg_replace('/\D/', '', $textMessage);
-
-                if (strlen($cpf) !== 11 || !$this->isValidCPF($cpf)) {
-                    return $this->sendTextMessage($phoneNumber, "❌ CPF inválido. Informe um CPF válido (somente 11 números), *{$participant->first_name}*.");
-                }
-
-                $participant->cpf = $cpf;
-                $participant->step_register = 3; // << AVANÇA PARA CATEGORIA BASE
-                $participant->save();
-
-                // NOVO PASSO 5: Solicitar Categoria Base (Público Geral/Sócio/PCD)
-                $buttons = [
-                    ['id' => 'cat_geral', 'label' => 'Público Geral'],
-                    ['id' => 'cat_socio', 'label' => 'Sócio Efetivo (Caixa)'],
-                    ['id' => 'cat_pcd', 'label' => 'PCD (Pessoa com Deficiência)'],
-                ];
-
-                return $this->whatsAppService->sendButtonListMessage(
-                    $phoneNumber,
-                    "Obrigado, *{$participant->first_name}*! Agora, em qual destas categorias você se enquadra?",
-                    $buttons
-                );
-
-            case 3:
-                // NOVO PASSO 6: Processa a Categoria Base
-                $firstName = $participant->first_name;
-
-                // FLUXO RÁPIDO PCD (Define Categoria V)
-                if ($buttonId === 'cat_pcd') {
-                    $participant->categoria = 'V';
-                    $participant->step_register = 6; // PULA PARA CEP (antigo case 2)
-                    $participant->save();
-
-                    return $this->sendTextMessage($phoneNumber, "Ótimo! Sua categoria foi definida como *PCD (5 km)*. Vamos para os dados pessoais. Agora, qual o seu **CEP** 🏠");
-                }
-
-                // FLUXO NORMAL (Geral ou Sócio) -> Pede Percurso
-                if (in_array($buttonId, ['cat_geral', 'cat_socio'])) {
-
-                    $participant->temp_cat_base = $buttonId;
-                    $participant->step_register = 4; // AVANÇA PARA PERCURSO
-                    $participant->save();
-
-                    $buttons = [
-                        ['id' => 'percurso_5km', 'label' => '5 km'],
-                        ['id' => 'percurso_10km', 'label' => '10 km'],
-                    ];
-
-                    return $this->whatsAppService->sendButtonListMessage(
-                        $phoneNumber,
-                        "Ótimo! Registrado. Agora, me informe qual o tamanho do percurso que deseja concorrer:",
-                        $buttons
-                    );
-                }
-
-                return $this->sendTextMessage($phoneNumber, "Por favor, escolha uma das categorias usando os botões.");
-
-            case 4:
-                // NOVO PASSO 7: Recebe o Percurso e Pede a Faixa Etária
-                $percurso = null;
-                if ($buttonId === 'percurso_5km') {
-                    $percurso = '5 km';
-                } elseif ($buttonId === 'percurso_10km') {
-                    $percurso = '10 km';
-                }
-
-                if ($percurso) {
-                    $cat_base = $participant->temp_cat_base;
-                    $faixas = $this->getFaixasEtarias($cat_base, $percurso);
-
-                    $participant->temp_percurso = $percurso;
-                    $participant->step_register = 5; // AVANÇA PARA FAIXA ETÁRIA
-                    $participant->save();
-
-                    return $this->whatsAppService->sendButtonListMessage(
-                        $phoneNumber,
-                        "Obrigado por informar! Agora, preciso que me informe qual faixa etária de idade você possui:",
-                        $faixas
-                    );
-                }
-
-                return $this->sendTextMessage($phoneNumber, "Por favor, escolha uma opção de percurso usando os botões (5 km ou 10 km).");
-
-            case 5:
-                // NOVO PASSO 8: Recebe a Faixa Etária e Finaliza a Categoria
-                $categoria_final = $buttonId;
-
-                // Salva a Categoria Final
-                $participant->categoria = $categoria_final;
-                $participant->temp_cat_base = null;
-                $participant->temp_percurso = null;
-
-                $participant->step_register = 6; // AVANÇA PARA CEP (início dos campos pessoais)
-                $participant->save();
-
-                $categoria_desc = $this->getCategoriaDescription($categoria_final);
-
-                return $this->sendTextMessage($phoneNumber, "Excelente! Sua categoria (*{$categoria_desc}*) foi definida. Vamos para os dados pessoais. Qual o seu **CEP** 🏠");
-
-            case 6:
-                // ANTIGO case 2: Recebe o CEP (Deslocado)
-                if (trim($textMessage) === '') {
-                    return $this->sendTextMessage($phoneNumber, "Por favor, informe seu *CEP*, *{$participant->first_name}*.");
-                }
-
-                $participant->cep = trim($textMessage);
-                $participant->step_register = 7; // Próximo: ESTADO
-                $participant->save();
-
-                return $this->sendTextMessage($phoneNumber, "Obrigado, *{$participant->first_name}*! Qual é o seu *Estado*?");
-
-            case 7:
-                // ANTIGO case 3: Recebe o Estado (Deslocado)
-                if (trim($textMessage) === '') {
-                    return $this->sendTextMessage($phoneNumber, "Digite o *Estado*, *{$participant->first_name}*.");
-                }
-
-                $participant->state = trim($textMessage);
-                $participant->step_register = 8; // Próximo: CIDADE
-                $participant->save();
-
-                return $this->sendTextMessage($phoneNumber, "Beleza, *{$participant->first_name}*! Agora digite a sua *Cidade*.");
-
-            case 8:
-                // ANTIGO case 4: Recebe a Cidade (Deslocado)
-                if (trim($textMessage) === '') {
-                    return $this->sendTextMessage($phoneNumber, "Informe o *Bairro*, *{$participant->first_name}*.");
-                }
-
-                $participant->neighborhood = trim($textMessage);
-                $participant->step_register = 9; // Próximo: CPF (AGORA TELEFONE?)
-                $participant->save();
-
-                // *Aviso*: O case 4 original pedia Bairro, mas a mensagem falava em Bairro. Aqui o próximo passo deve ser o que você precisa.
-                return $this->sendTextMessage($phoneNumber, "Certo, *{$participant->first_name}*! Agora preciso do seu *CPF* (apenas números).");
-
-
-            case 9:
-                // ANTIGO case 5: Recebe o CPF (Deslocado)
+                // CPF com validação
                 $cpf = preg_replace('/\D/', '', $textMessage);
 
                 if (strlen($cpf) !== 11 || !$this->isValidCPF($cpf)) {
@@ -597,42 +238,62 @@ class ParticipantService
                 }
 
                 $participant->cpf = $cpf;
-                $participant->step_register = 10; // Próximo: LGPD
+                $participant->step_register = 3;
                 $participant->save();
 
-                $buttons = [
-                    ['id' => 'privacy_yes', 'label' => 'SIM'],
-                    ['id' => 'privacy_no', 'label' => 'NÃO'],
-                ];
+                return $this->sendTextMessage($phoneNumber, "Show, *{$participant->first_name}*! Agora me diga a sua *idade* 🕐");
 
-                return $this->whatsAppService->sendButtonListMessage(
-                    $phoneNumber,
-                    "📜 {$participant->first_name}, para finalizar seu cadastro, você autoriza o uso dos seus dados conforme a LGPD?",
-                    $buttons
-                );
-
-            case 10:
-                // ANTIGO case 6: Recebe a LGPD (Deslocado)
-                if ($buttonId === 'privacy_yes') {
-                    $participant->step_register = 0;
-                    $participant->save();
-
-                    $this->sendTextMessage($phoneNumber, "🎉 Cadastro concluído com sucesso, *{$participant->first_name}*! Agora você já pode cadastrar seus cupons.");
-                    return $this->sendInitialOptions($phoneNumber);
+            case 3:
+                // Idade
+                $idade = intval(trim($textMessage));
+                if ($idade <= 0) {
+                    return $this->sendTextMessage($phoneNumber, "Por favor, informe uma *idade válida*, *{$participant->first_name}*.");
                 }
 
-                if ($buttonId === 'privacy_no') {
-                    $participant->step_register = 0;
-                    $participant->save();
+                $participant->cep = $idade;
+                $participant->step_register = 4;
+                $participant->save();
 
-                    return $this->sendTextMessage($phoneNumber, "😢 Tudo bem, *{$participant->first_name}*! Sem aceitar a política de privacidade não é possível participar da promoção.");
+                return $this->sendTextMessage($phoneNumber, "Certo! Agora, qual é o nome da sua *equipe*?");
+
+            case 4:
+                // Equipe
+                if (trim($textMessage) === '') {
+                    return $this->sendTextMessage($phoneNumber, "Digite o nome da sua *equipe*, *{$participant->first_name}*.");
                 }
 
-                return $this->sendTextMessage($phoneNumber, "Por favor, escolha uma opção: SIM ou NÃO, *{$participant->first_name}*.");
+                $participant->last_name = trim($textMessage);
+                $participant->step_register = 5;
+                $participant->save();
+
+                return $this->sendTextMessage($phoneNumber, "Perfeito! Agora me informe o *patrocinador* (se houver). Se não tiver, digite *Nenhum*.");
+
+            case 5:
+                // Patrocinador
+                $participant->state = trim($textMessage);
+                $participant->step_register = 6;
+                $participant->save();
+
+                return $this->sendTextMessage($phoneNumber, "Beleza! Agora informe o nome do seu *plano de saúde* 🏥");
+
+            case 6:
+                // Plano de saúde
+                if (trim($textMessage) === '') {
+                    return $this->sendTextMessage($phoneNumber, "Por favor, digite o nome do seu *plano de saúde*, *{$participant->first_name}*.");
+                }
+
+                $participant->city = trim($textMessage);
+                $participant->step_register = 0;
+                $participant->save();
+
+                $this->sendTextMessage($phoneNumber, "✅ Cadastro concluído com sucesso, *{$participant->first_name}*! Agora vamos iniciar sua *inscrição na corrida* 🏃‍♂️");
+                // Aqui começa o fluxo de corrida no handleParticipantMessage
+                return response()->json(['status' => 'register complete']);
         }
 
         return response()->json(['status' => 'awaiting register']);
     }
+
 
     protected function isValidCPF($cpf)
     {

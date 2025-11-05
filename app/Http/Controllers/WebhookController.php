@@ -17,9 +17,12 @@ class WebhookController extends Controller
     }
 
     protected $allowedPhones = [
-        '558699939604',
+        '558681931714',
         '558699598080',
         '558699206955',
+        '558694321653',
+        '558632164412',
+        '558698430303',
     ];
 
     public function handleCallback(Request $request)
