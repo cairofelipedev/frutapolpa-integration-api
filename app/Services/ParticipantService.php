@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Helpers\CouponMessageHelper;
 use App\Helpers\MessageHelper;
 use App\Models\Participant;
 use App\Models\Coupon;
@@ -37,6 +38,8 @@ class ParticipantService
 
     protected function handleButtonMessage(Participant $participant, $phoneNumber, $buttonId)
     {
+        $firstName = $participant->first_name ?? 'participante';
+
         if ($buttonId === 'cadastrar_cupom') {
             $participant->step = 1;
             $participant->save();
@@ -46,13 +49,20 @@ class ParticipantService
                 'image' => null,
             ]);
 
+            // Mensagem inicial variada
+            $startMessages = CouponMessageHelper::getStartCouponMessages($firstName);
+            $message = $startMessages[array_rand($startMessages)];
+
+            $this->sendTextMessage($phoneNumber, $message);
+
             return $this->sendPolpaOptions($phoneNumber);
         }
 
         if (in_array($buttonId, ['3', '6', '9', '12', '15'])) {
-            $quantity = is_numeric($buttonId) ? intval($buttonId) : 0;
+            $quantity = intval($buttonId);
 
             $coupon = $participant->coupons()->latest()->first();
+
             if ($coupon) {
                 $coupon->quantity = $quantity;
                 $coupon->save();
@@ -65,10 +75,13 @@ class ParticipantService
                 $this->whatsAppService->sendImageMessage(
                     $phoneNumber,
                     "https://frutapolpa.365chats.com/cupom.jpeg",
-                    "Certo! Agora envie a foto do seu comprovante 📸\n\nCaso ele seja muito grande, você pode dobrá-lo, mas lembre-se: as informações da compra das polpas devem estar visíveis."
+                    "Envie a foto do seu cupom fiscal.\nCertifique-se de que as informações da compra estejam visíveis."
                 );
 
-                return $this->sendTextMessage($phoneNumber, "Estamos quase lá! Envie agora a foto do seu cupom fiscal para validar sua participação.");
+                $messages = CouponMessageHelper::getQuantityConfirmationMessages($firstName);
+                $message = $messages[array_rand($messages)];
+
+                return $this->sendTextMessage($phoneNumber, $message);
             }
         }
 
@@ -96,22 +109,17 @@ class ParticipantService
             $codes = $coupon->codes()->pluck('code')->toArray();
 
             if (!empty($codes)) {
-                $message = "Obrigado por participar, *{$participant->first_name}*! 🎉\n\nContinue comprando Fruta Polpa e aumente a sua sorte para o próximo sorteio. 🍓\n\nSeus *números da sorte* são:\n";
-                $message .= implode("\n", $codes);
-                $message .= "\n\n👉 Cadastre um novo cupom sempre que quiser para aumentar suas chances de ganhar!";
+                $message = CouponMessageHelper::getFinalizationMessages($participant->first_name, $codes);
             } else {
-                $message = "Imagem recebida, mas não encontramos os cupons gerados. Tente novamente ou fale com o suporte.";
+                $message = CouponMessageHelper::getCouponNotFoundMessages();
+                $message = $message[array_rand($message)];
             }
 
             $this->sendTextMessage($phoneNumber, $message);
-
-            $participant->step = 0;
-            $participant->save();
-
-            Log::info("Imagem salva no cupom ID: {$coupon->id}, participante: {$participant->id}");
+            $participant->update(['step' => 0]);
         } else {
-            Log::warning("Nenhum cupom encontrado para participante ID: {$participant->id}");
-            $this->sendTextMessage($phoneNumber, "Não encontramos um cupom ativo para salvar essa imagem. Tente novamente.");
+            $message = CouponMessageHelper::getCouponNotFoundMessages();
+            $this->sendTextMessage($phoneNumber, $message[array_rand($message)]);
         }
 
         return response()->json(['status' => 'image saved']);
@@ -120,19 +128,23 @@ class ParticipantService
     protected function processCouponQuantity(Participant $participant, $phoneNumber, $quantity)
     {
         $quantity = intval($quantity);
+        $firstName = $participant->first_name ?? 'participante';
 
         $coupon = $participant->coupons()->latest()->first();
 
         if (!$coupon) {
-            return $this->sendTextMessage($phoneNumber, "Erro: nenhum cupom ativo encontrado.");
+            $messages = CouponMessageHelper::getCouponNotFoundMessages();
+            return $this->sendTextMessage($phoneNumber, $messages[array_rand($messages)]);
         }
 
         $codes = $coupon->codes()->pluck('code')->toArray();
 
         if (!empty($codes)) {
-            $message = "Perfeito, *{$participant->first_name}*! Estes são seus cupons da sorte:\n" . implode("\n", $codes);
+            $messages = CouponMessageHelper::getShowCouponsMessages($firstName, $codes);
+            $message = $messages[array_rand($messages)];
         } else {
-            $message = "Não encontramos cupons gerados. Tente novamente ou fale com o suporte.";
+            $messages = CouponMessageHelper::getCouponNotFoundMessages();
+            $message = $messages[array_rand($messages)];
         }
 
         $this->sendTextMessage($phoneNumber, $message);
@@ -142,6 +154,7 @@ class ParticipantService
 
         return response()->json(['status' => 'coupons sent', 'coupons' => $codes]);
     }
+
 
     protected function sendTextMessage($phoneNumber, $messageBody)
     {
@@ -157,11 +170,10 @@ class ParticipantService
             ['id' => 'cadastrar_cupom', 'label' => 'Cadastrar novo cupom'],
         ];
 
-        return $this->whatsAppService->sendButtonListMessage(
-            $phoneNumber,
-            "🍓 Olá, *{$firstName}!* 👋\nBem-vindo novamente à *Polpa Premiada 2025*! 🎉\n\nO que você deseja fazer?",
-            $buttons
-        );
+        $messages = CouponMessageHelper::getInitialOptionMessages($firstName);
+        $message = $messages[array_rand($messages)];
+
+        return $this->whatsAppService->sendButtonListMessage($phoneNumber, $message, $buttons);
     }
 
     public function sendNotRegisteredMessage($phoneNumber, $senderName = null)
